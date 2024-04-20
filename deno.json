@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "dev": "deno run --allow-all ./scripts/watch.ts"
+  },
+  "fmt": {
+    "options": {
+      "lineWidth": 120
+    }
+  }
+}
