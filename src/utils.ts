@@ -18,6 +18,18 @@ export const delay = (ms: number) => {
   });
 };
 
+export const debounce = <T extends unknown[]>(fn: (...args: T) => void, threshold: number) => {
+  let timeout: number | undefined = undefined;
+
+  return (...args: T) => {
+    clearTimeout(timeout);
+
+    timeout = setTimeout(() => {
+      fn(...args);
+    }, threshold);
+  };
+};
+
 export const getDataURL = (path: string): Promise<string> => {
   return fetch(path).then((res) => res.blob()).then((blob) => {
     const reader = new FileReader();

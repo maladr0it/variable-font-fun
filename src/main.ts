@@ -3,7 +3,7 @@
 import { RECT_VERTS } from "./data/rect.ts";
 import { CUBE_VERTS } from "./data/cube.ts";
 import { shader_load } from "./shader.ts";
-import { delay, getDataURL, loadImage } from "./utils.ts";
+import { debounce, delay, getDataURL, loadImage } from "./utils.ts";
 import { mat4_identity, mat4_mul, mat4_ortho, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
 import { vec3_add, vec3_create } from "./vec3.ts";
 import { quat_axisAngle, quat_identity, quat_mul } from "./quat.ts";
@@ -16,12 +16,6 @@ const Z_NEAR = 0.01;
 const Z_FAR = 1000;
 const CANVAS_WIDTH = 600;
 const CANVAS_HEIGHT = 400;
-
-const weightInput = document.getElementById("weight")!;
-
-weightInput.addEventListener("input", (event: any) => {
-  document.documentElement.style.setProperty("--weight", event.target.value);
-});
 
 const start = async () => {
   //
@@ -57,46 +51,7 @@ const start = async () => {
   // SVG STUFF
   //
   const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="1024" height="166" viewBox="0 0 1024 166" fill="blue">
-      <style>
-        @font-face {
-          font-family: "var-font";
-          src: url("${fontDataBase64}");
-          font-weight: 400 700;
-          font-synthesis: none;
-        }
-
-        text {
-          --weight: 400;
-
-          font-size: 128px;
-          font-family: "var-font", sans-serif;
-          font-variation-settings: "wght" var(--weight);
-        }
-      </style>
-      <text class="test" x="0" y="128">The quick</text>
-    </svg>
-  `;
-
-  document.getElementById("text-image-container")!.innerHTML = svg;
-
-  const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svg)}`);
-
   const svgTexture = gl.createTexture()!;
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, svgTexture);
-
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    img,
-  );
-  gl.generateMipmap(gl.TEXTURE_2D);
 
   // create cubemap
   const cubemap = gl.createTexture()!;
@@ -142,6 +97,54 @@ const start = async () => {
   gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 5 * Float32Array.BYTES_PER_ELEMENT);
   gl.enableVertexAttribArray(2);
 
+  const updateSvgTexture = async (weight: number) => {
+    const svgString = `
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="1024" height="166" viewBox="0 0 1024 166" fill="blue">
+        <style>
+          @font-face {
+            font-family: "var-font";
+            src: url("${fontDataBase64}");
+            font-weight: 400 700;
+            font-synthesis: none;
+          }
+  
+          text {
+            --weight: ${weight};
+  
+            font-size: 128px;
+            font-family: "var-font", sans-serif;
+            font-variation-settings: "wght" var(--weight);
+          }
+        </style>
+        <text class="test" x="0" y="128">The quick</text>
+      </svg>
+  `;
+
+    const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, svgTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      img,
+    );
+    gl.generateMipmap(gl.TEXTURE_2D);
+
+    document.getElementById("text-image-container")!.innerHTML = svgString;
+  };
+
+  const weightInput = document.getElementById("weight")!;
+  const onInput = (event: any) => {
+    const weight = event.target.value;
+    updateSvgTexture(weight);
+  };
+  weightInput.addEventListener("input", debounce(onInput, 250));
+
+  updateSvgTexture(400);
+
   const tick = (_frameTime: number) => {
     //
     // update
@@ -174,6 +177,7 @@ const start = async () => {
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
       gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+      gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
@@ -194,6 +198,8 @@ const start = async () => {
 
       // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
+
+    // await delay(1000);
 
     requestAnimationFrame(tick);
   };
