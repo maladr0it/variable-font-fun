@@ -17,6 +17,9 @@ const Z_FAR = 1000;
 const CANVAS_WIDTH = 600;
 const CANVAS_HEIGHT = 400;
 
+const SVG_WIDTH = 1024;
+const SVG_HEIGHT = 166;
+
 const start = async () => {
   //
   //
@@ -25,9 +28,6 @@ const start = async () => {
   //
   // State
   //
-  let modelPos = vec3_create(0, 0, -1);
-  let modelScale = vec3_create(4, 1, 1);
-  let modelRot = quat_identity();
 
   // gl setup
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -39,6 +39,7 @@ const start = async () => {
 
   // load shaders
   const program = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
+  const refractiveProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/refractive.fs"))!;
 
   // create textures
   const fTexture = gl.createTexture()!;
@@ -48,33 +49,65 @@ const start = async () => {
   gl.generateMipmap(gl.TEXTURE_2D);
 
   //
-  // SVG STUFF
+  // SVG stuff
   //
   const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
   const svgTexture = gl.createTexture()!;
 
+  //
+  // Framebuffer stuff
+  //
+
+  // create texture
+  const frameTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    CANVAS_WIDTH,
+    CANVAS_HEIGHT,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null,
+  );
+
+  const fbo = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D,
+    frameTexture,
+    0,
+  );
+
+  // gl.bindFramebuffer(gl.FRAMEBUFFER, envMapFbos[i]);
+  //     gl.viewport(0, 0, ENV_MAP_SIZE, ENV_MAP_SIZE);
+
   // create cubemap
-  const cubemap = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
-  const cubemapPaths = [
-    "./images/debug/px.png",
-    "./images/debug/nx.png",
-    "./images/debug/py.png",
-    "./images/debug/ny.png",
-    "./images/debug/pz.png",
-    "./images/debug/nz.png",
-  ];
-  for (let i = 0; i < cubemapPaths.length; i += 1) {
-    gl.texImage2D(
-      gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
-      0,
-      gl.RGBA,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      await loadImage(cubemapPaths[i]),
-    );
-  }
-  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  // const cubemap = gl.createTexture()!;
+  // gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
+  // const cubemapPaths = [
+  //   "./images/debug/px.png",
+  //   "./images/debug/nx.png",
+  //   "./images/debug/py.png",
+  //   "./images/debug/ny.png",
+  //   "./images/debug/pz.png",
+  //   "./images/debug/nz.png",
+  // ];
+  // for (let i = 0; i < cubemapPaths.length; i += 1) {
+  //   gl.texImage2D(
+  //     gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
+  //     0,
+  //     gl.RGBA,
+  //     gl.RGBA,
+  //     gl.UNSIGNED_BYTE,
+  //     await loadImage(cubemapPaths[i]),
+  //   );
+  // }
+  // gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
 
   // create vbo
   const vbo = gl.createBuffer();
@@ -99,7 +132,7 @@ const start = async () => {
 
   const updateSvgTexture = async (weight: number) => {
     const svgString = `
-      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="1024" height="166" viewBox="0 0 1024 166" fill="blue">
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 1024 166" fill="blue">
         <style>
           @font-face {
             font-family: "var-font";
@@ -110,7 +143,6 @@ const start = async () => {
   
           text {
             --weight: ${weight};
-  
             font-size: 128px;
             font-family: "var-font", sans-serif;
             font-variation-settings: "wght" var(--weight);
@@ -121,6 +153,7 @@ const start = async () => {
   `;
 
     const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, svgTexture);
     gl.texImage2D(
@@ -136,16 +169,16 @@ const start = async () => {
     document.getElementById("text-image-container")!.innerHTML = svgString;
   };
 
-  const weightInput = document.getElementById("weight")!;
+  const weightInput = document.getElementById("weight") as HTMLInputElement;
   const onInput = (event: any) => {
     const weight = event.target.value;
     updateSvgTexture(weight);
   };
   weightInput.addEventListener("input", debounce(onInput, 250));
 
-  updateSvgTexture(400);
+  await updateSvgTexture(parseInt(weightInput.value));
 
-  const tick = (_frameTime: number) => {
+  const tick = async (_frameTime: number) => {
     //
     // update
     //
@@ -155,22 +188,29 @@ const start = async () => {
     //
     // render
     //
-    gl.clearColor(0, 1, 0, 1);
+    gl.clearColor(1, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-
-    gl.useProgram(program);
 
     const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
     // const projMat = mat4_ortho(-1.5, 1.5, -1, 1, 0, Z_FAR);
     const viewMat = mat4_identity();
 
-    // render obj1
+    // render svg texture
     {
+      gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      const modelPos = vec3_create(0, 0, -1000);
+      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
+      const modelRot = quat_identity();
+
       let modelMat = mat4_identity();
       modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
       modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+      gl.useProgram(program);
 
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
@@ -180,27 +220,40 @@ const start = async () => {
       gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+
+      // render to framebuffer
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+
+      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+      gl.generateMipmap(gl.TEXTURE_2D);
     }
 
-    // render obj2
+    // render refractive material
     {
-      // let modelMat = mat4_identity();
-      // // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      // // modelMat = mat4_mul(modelMat, mat4_scale(vec3_create(2, 2, 2)));
-      // modelMat = mat4_mul(modelMat, mat4_translate(vec3_add(modelPos, vec3_create(0, 0, -2))));
-      // const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
-      // gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+      let modelMat = mat4_identity();
+      modelMat = mat4_mul(modelMat, mat4_translate(vec3_create(0, 0, -2)));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
-      // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+      gl.useProgram(program);
+      // gl.bindTexture(gl.TEXTURE_2D, fTexture);
+
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
+      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+
+      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
 
-    // await delay(1000);
-
+    await delay(1000);
     requestAnimationFrame(tick);
   };
 

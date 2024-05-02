@@ -1,21 +1,6 @@
-/* @font-face {
-  font-family: "var-font";
-  src: local("system-ui");
-  font-weight: 0 500;
-  font-style: oblique 0deg 20deg;
-  font-synthesis: none;
+#canvas {
+  /* background-color: red; */
 }
-
-:root {
-  font-family: "var-font";
-
-  --weight: 0;
-  --slant: 20;
-}
-
-.test {
-  font-variation-settings: "wght" var(--weight), "slnt" var(--slant);
-} */
 
 #text-image {
   display: block;
