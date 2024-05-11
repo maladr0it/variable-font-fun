@@ -1,8 +1,13 @@
-#canvas {
-  /* background-color: red; */
+#text-image-container {
+  margin-top: 12px;
 }
 
 #text-image {
   display: block;
-  background-color: aqua;
+  outline: 1px solid red;
+}
+
+#canvas {
+  margin-top: 12px;
+  outline: 1px solid blue;
 }

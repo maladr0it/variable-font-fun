@@ -13,21 +13,18 @@ import { mat4_scale } from "./mat4.ts";
 
 const FOV = Math.PI / 2;
 const Z_NEAR = 0.01;
-const Z_FAR = 1000;
-const CANVAS_WIDTH = 600;
-const CANVAS_HEIGHT = 400;
+const Z_FAR = 10_000;
+const CANVAS_WIDTH = 512;
+const CANVAS_HEIGHT = 256;
 
-const SVG_WIDTH = 1024;
-const SVG_HEIGHT = 166;
+const SVG_WIDTH = 450;
+const SVG_HEIGHT = 94;
 
 const start = async () => {
   //
-  //
-  //
-
-  //
   // State
   //
+  let modelRot = quat_identity();
 
   // gl setup
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -132,7 +129,7 @@ const start = async () => {
 
   const updateSvgTexture = async (weight: number) => {
     const svgString = `
-      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 1024 166" fill="blue">
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="blue">
         <style>
           @font-face {
             font-family: "var-font";
@@ -143,12 +140,12 @@ const start = async () => {
   
           text {
             --weight: ${weight};
-            font-size: 128px;
+            font-size: 72px;
             font-family: "var-font", sans-serif;
             font-variation-settings: "wght" var(--weight);
           }
         </style>
-        <text class="test" x="0" y="128">The quick</text>
+        <text class="test" x="0" y="72">The quick</text>
       </svg>
   `;
 
@@ -190,23 +187,26 @@ const start = async () => {
     //
     gl.clearColor(1, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
 
     const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
-    // const projMat = mat4_ortho(-1.5, 1.5, -1, 1, 0, Z_FAR);
+    // const projMat = mat4_ortho(-CANVAS_WIDTH, +CANVAS_WIDTH, -CANVAS_HEIGHT, +CANVAS_HEIGHT, 0, Z_FAR);
     const viewMat = mat4_identity();
+
+    // render to screen, later we will render to framebuffer instead
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    gl.clearColor(1, 0, 1, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // render svg texture
     {
-      gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-      const modelPos = vec3_create(0, 0, -1000);
-      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
-      const modelRot = quat_identity();
+      const modelPos = vec3_create(0, 0, -10);
+      // const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
 
       let modelMat = mat4_identity();
-      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
@@ -220,40 +220,65 @@ const start = async () => {
       gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-
-      // render to framebuffer
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-
-      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
-      gl.generateMipmap(gl.TEXTURE_2D);
     }
 
-    // render refractive material
+    // render f-texture
     {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // HERE: bug is somehow related to scaling, it is messing up the depth values
+
+      const modelPos = vec3_create(0, 0, -10);
+      // const modelScale = vec3_create(200, 200, 1);
+      modelRot = quat_mul(modelRot, quat_axisAngle(vec3_create(0, 1, 0), 0.01));
 
       let modelMat = mat4_identity();
-      modelMat = mat4_mul(modelMat, mat4_translate(vec3_create(0, 0, -2)));
-      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
-      gl.useProgram(program);
-      // gl.bindTexture(gl.TEXTURE_2D, fTexture);
+      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
       gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-
-      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+      gl.bindTexture(gl.TEXTURE_2D, fTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
 
-    await delay(1000);
+    // // render the same scene to framebuffer
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    // gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // gl.clearColor(0, 0, 1, 1);
+    // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+
+    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+    // gl.generateMipmap(gl.TEXTURE_2D);
+    // }
+
+    // render refractive material
+    // {
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // let modelMat = mat4_identity();
+    // modelMat = mat4_mul(modelMat, mat4_translate(vec3_create(0, 0, -2)));
+    // const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+    // gl.useProgram(program);
+
+    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
+    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
+    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
+    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
+    // gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+
+    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+    // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    // }
+
     requestAnimationFrame(tick);
   };
 
