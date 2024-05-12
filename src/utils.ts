@@ -12,6 +12,13 @@ export const loadImage = (path: string): Promise<HTMLImageElement> => {
   });
 };
 
+export const loadImageSync = (path: string): HTMLImageElement => {
+  const image = new Image();
+  image.src = path;
+
+  return image;
+};
+
 export const delay = (ms: number) => {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
