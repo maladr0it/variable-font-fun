@@ -1,3 +1,4 @@
+import { Mat4 } from "./mat4.ts";
 import { Quat } from "./quat.ts";
 
 export type Vec3 = Float32Array & {
@@ -51,6 +52,22 @@ export const vec3_mul = (a: Vec3, s: number) => {
     result[i] = a[i] * s;
   }
 
+  return result;
+};
+
+// gives the vector a w component of 1
+export const vec3_mulMat4 = (a: Vec3, b: Mat4) => {
+  const result = vec3_allocate();
+
+  for (let i = 0; i < 3; ++i) {
+    // deno-fmt-ignore
+    result[i] = (
+      a[0] * b[4 * 0 + i] +
+      a[1] * b[4 * 1 + i] +
+      a[2] * b[4 * 2 + i] +
+      1 * b[4 * 3 + i]
+    );
+  }
   return result;
 };
 

@@ -1,7 +1,7 @@
 import { Quat } from "./quat.ts";
 import { Vec3 } from "./vec3.ts";
 
-type Mat4 = Float32Array & {
+export type Mat4 = Float32Array & {
   _tag: "Mat4";
 };
 

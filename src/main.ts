@@ -2,18 +2,20 @@
 
 import { RECT_VERTS } from "./data/rect.ts";
 import { CUBE_VERTS } from "./data/cube.ts";
+
+import { log_clear, log_getContent, log_write } from "./static/log.ts";
 import { shader_load } from "./shader.ts";
 import { debounce, delay, getDataURL, loadImage } from "./utils.ts";
 import { mat4_identity, mat4_mul, mat4_ortho, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
-import { vec3_add, vec3_create } from "./vec3.ts";
+import { vec3_add, vec3_create, vec3_mulMat4 } from "./vec3.ts";
 import { quat_axisAngle, quat_identity, quat_mul } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
 
 const FOV = Math.PI / 2;
-const Z_NEAR = 0.01;
-const Z_FAR = 10_000;
+const Z_NEAR = 0.1;
+const Z_FAR = 100_000;
 const CANVAS_WIDTH = 512;
 const CANVAS_HEIGHT = 256;
 
@@ -25,6 +27,8 @@ const start = async () => {
   // State
   //
   let modelRot = quat_identity();
+
+  const logEl = document.getElementById("log") as HTMLElement;
 
   // gl setup
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -55,7 +59,6 @@ const start = async () => {
   // Framebuffer stuff
   //
 
-  // create texture
   const frameTexture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, frameTexture);
   gl.texImage2D(
@@ -189,8 +192,8 @@ const start = async () => {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
-    // const projMat = mat4_ortho(-CANVAS_WIDTH, +CANVAS_WIDTH, -CANVAS_HEIGHT, +CANVAS_HEIGHT, 0, Z_FAR);
+    // const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
+    const projMat = mat4_ortho(-CANVAS_WIDTH, +CANVAS_WIDTH, -CANVAS_HEIGHT, +CANVAS_HEIGHT, Z_NEAR, Z_FAR);
     const viewMat = mat4_identity();
 
     // render to screen, later we will render to framebuffer instead
@@ -201,12 +204,11 @@ const start = async () => {
 
     // render svg texture
     {
-      const modelPos = vec3_create(0, 0, -10);
-      // const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
+      const modelPos = vec3_create(0, 0, -100);
+      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
 
       let modelMat = mat4_identity();
-      // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
@@ -220,22 +222,26 @@ const start = async () => {
       gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+
+      const p = vec3_mulMat4(vec3_create(-1, -1, 0), modelMat);
+      log_write("svg", p);
     }
 
     // render f-texture
     {
-      // HERE: bug is somehow related to scaling, it is messing up the depth values
-
-      const modelPos = vec3_create(0, 0, -10);
-      // const modelScale = vec3_create(200, 200, 1);
+      const modelPos = vec3_create(0, 0, -150);
+      const modelScale = vec3_create(100, 100, 1);
       modelRot = quat_mul(modelRot, quat_axisAngle(vec3_create(0, 1, 0), 0.01));
 
       let modelMat = mat4_identity();
 
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+      const p = vec3_mulMat4(vec3_create(-1, -1, 0), modelMat);
+      log_write("f", p);
 
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
@@ -278,6 +284,12 @@ const start = async () => {
     // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
     // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     // }
+
+    //
+    // Write to output
+    //
+    logEl.innerText = log_getContent();
+    log_clear();
 
     requestAnimationFrame(tick);
   };
