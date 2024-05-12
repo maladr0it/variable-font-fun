@@ -55,54 +55,10 @@ const start = async () => {
   //
   // SVG stuff
   //
-  // const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
-  // const svgTexture = gl.createTexture()!;
-
-  // const updateSvgTexture = async (weight: number) => {
-  //   const svgString = `
-  //     <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="green">
-  //       <style>
-  //         @font-face {
-  //           font-family: "var-font";
-  //           src: url("${fontDataBase64}");
-  //           font-weight: 400 700;
-  //           font-synthesis: none;
-  //         }
-
-  //         text {
-  //           --weight: ${weight};
-  //           font-size: 72px;
-  //           font-family: "var-font", sans-serif;
-  //           font-variation-settings: "wght" var(--weight);
-  //         }
-  //       </style>
-  //       <text class="test" x="0" y="72">free Victoria</text>
-  //     </svg>
-  // `;
-
-  //   const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
-
-  //   gl.activeTexture(gl.TEXTURE0);
-  //   gl.bindTexture(gl.TEXTURE_2D, svgTexture);
-  //   gl.texImage2D(
-  //     gl.TEXTURE_2D,
-  //     0,
-  //     gl.RGBA,
-  //     gl.RGBA,
-  //     gl.UNSIGNED_BYTE,
-  //     img,
-  //   );
-  //   gl.generateMipmap(gl.TEXTURE_2D);
-
-  //   document.getElementById("text-image-container")!.innerHTML = svgString;
-  // };
-
-  // experiment with 2d context for svg stuff
-  //
   const textureCanvas = document.createElement("canvas");
   textureCanvas.width = SVG_WIDTH * globalThis.devicePixelRatio;
   textureCanvas.height = SVG_HEIGHT * globalThis.devicePixelRatio;
-  const textureCtx = textureCanvas.getContext("2d", { alpha: true })!;
+  const textureCtx = textureCanvas.getContext("2d")!;
 
   const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
   const svgTexture = gl.createTexture()!;
@@ -131,7 +87,6 @@ const start = async () => {
 
     const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
 
-    // draw to canvas first
     textureCtx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
     textureCtx.drawImage(img, 0, 0, textureCanvas.width, textureCanvas.height);
 
@@ -244,13 +199,14 @@ const start = async () => {
     //
     // render
     //
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(1, 1, 1, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(1, 1, 1, 1);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
     const projMat = mat4_ortho(
