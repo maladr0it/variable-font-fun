@@ -75,7 +75,8 @@ const start = async () => {
           }
 
           text {
-            --weight: ${weight};
+            --local-weight: ${weight};
+            --weight: var(--global-weight, var(--local-weight));
             font-size: 72px;
             font-family: "var-font", sans-serif;
             font-variation-settings: "wght" var(--weight);
@@ -102,7 +103,13 @@ const start = async () => {
     );
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    document.getElementById("text-image-container")!.innerHTML = svgString;
+    const svgContainer = document.getElementById("text-image-container") as HTMLElement;
+
+    if (!svgContainer.innerHTML) {
+      document.getElementById("text-image-container")!.innerHTML = svgString;
+    }
+
+    document.documentElement.style.setProperty("--global-weight", weight.toString());
   };
 
   //
@@ -188,7 +195,7 @@ const start = async () => {
     const weight = event.target.value;
     updateSvgTexture(weight);
   };
-  weightInput.addEventListener("input", debounce(onInput, 250));
+  weightInput.addEventListener("input", onInput);
   await updateSvgTexture(parseInt(weightInput.value));
 
   const tick = async (_frameTime: number) => {
@@ -233,6 +240,8 @@ const start = async () => {
       modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+      gl.useProgram(program);
 
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
