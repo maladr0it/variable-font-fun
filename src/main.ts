@@ -41,9 +41,15 @@ const start = async () => {
   // read textures top-first
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(0, 1, 0, 1);
+
   // load shaders
   const program = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
   const refractiveProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/refractive.fs"))!;
+  const screenquadProgram = (await shader_load(gl, "./shaders/screenquad.vs", "./shaders/screenquad.fs"))!;
 
   // create textures
   const fTexture = gl.createTexture()!;
@@ -65,7 +71,7 @@ const start = async () => {
 
   const updateSvgTexture = async (weight: number) => {
     const svgString = `
-      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="green">
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="black">
         <style>
           @font-face {
             font-family: "var-font";
@@ -105,6 +111,7 @@ const start = async () => {
 
     const svgContainer = document.getElementById("text-image-container") as HTMLElement;
 
+    // TODO: tidy this up later
     if (!svgContainer.innerHTML) {
       document.getElementById("text-image-container")!.innerHTML = svgString;
     }
@@ -122,49 +129,43 @@ const start = async () => {
     gl.TEXTURE_2D,
     0,
     gl.RGBA,
-    CANVAS_WIDTH,
-    CANVAS_HEIGHT,
+    canvas.width,
+    canvas.height,
     0,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
     null,
   );
+  gl.bindTexture(gl.TEXTURE_2D, null);
+
+  const colorRenderbuffer = gl.createRenderbuffer()!;
+  gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, canvas.width, canvas.height);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+  const depthRenderbuffer = gl.createRenderbuffer()!;
+  gl.bindRenderbuffer(gl.RENDERBUFFER, depthRenderbuffer);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width, canvas.height);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, null);
 
   const fbo = gl.createFramebuffer()!;
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    frameTexture,
-    0,
-  );
 
-  // gl.bindFramebuffer(gl.FRAMEBUFFER, envMapFbos[i]);
-  //     gl.viewport(0, 0, ENV_MAP_SIZE, ENV_MAP_SIZE);
+  // gl.framebufferTexture2D(
+  //   gl.FRAMEBUFFER,
+  //   gl.COLOR_ATTACHMENT0,
+  //   gl.TEXTURE_2D,
+  //   frameTexture,
+  //   0,
+  // );
 
-  // create cubemap
-  // const cubemap = gl.createTexture()!;
-  // gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap);
-  // const cubemapPaths = [
-  //   "./images/debug/px.png",
-  //   "./images/debug/nx.png",
-  //   "./images/debug/py.png",
-  //   "./images/debug/ny.png",
-  //   "./images/debug/pz.png",
-  //   "./images/debug/nz.png",
-  // ];
-  // for (let i = 0; i < cubemapPaths.length; i += 1) {
-  //   gl.texImage2D(
-  //     gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
-  //     0,
-  //     gl.RGBA,
-  //     gl.RGBA,
-  //     gl.UNSIGNED_BYTE,
-  //     await loadImage(cubemapPaths[i]),
-  //   );
-  // }
-  // gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRenderbuffer);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRenderbuffer);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+    console.error("Framebuffer is not complete.");
+  }
 
   // create vbo
   const vbo = gl.createBuffer();
@@ -206,14 +207,15 @@ const start = async () => {
     //
     // render
     //
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(1, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(1, 1, 1, 1);
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
     const projMat = mat4_ortho(
@@ -226,8 +228,8 @@ const start = async () => {
     );
     const viewMat = mat4_identity();
 
-    // render to screen, later we will render to framebuffer instead
-
+    // Render scene to framebuffer
+    //
     // render f-texture
     {
       const modelPos = vec3_create(0, 0, -150);
@@ -275,37 +277,31 @@ const start = async () => {
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
 
-    // // render the same scene to framebuffer
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    // gl.viewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    // gl.clearColor(0, 0, 1, 1);
-    // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // Store the scene so far in a texture, we will sample it when rendering the refractive object
+    gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindTexture(gl.TEXTURE_2D, null);
 
-    // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    // render refractive object
+    {
+      // HERE
+    }
 
-    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
-    // gl.generateMipmap(gl.TEXTURE_2D);
-    // }
+    // render framebuffer texture to a quad
+    {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 1, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // render refractive material
-    // {
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.useProgram(screenquadProgram);
 
-    // let modelMat = mat4_identity();
-    // modelMat = mat4_mul(modelMat, mat4_translate(vec3_create(0, 0, -2)));
-    // const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+      gl.uniform1i(gl.getUniformLocation(screenquadProgram, "u_texture"), 0);
+      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
 
-    // gl.useProgram(program);
-
-    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
-    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
-    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
-    // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
-    // gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-
-    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
-    // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-    // }
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    }
 
     //
     // Write to output
