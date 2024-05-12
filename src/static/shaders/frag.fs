@@ -15,5 +15,7 @@ void main() {
   v_texCoord;
   v_normal;
 
+  vec4 color = texture(u_texture, v_texCoord);
+
   outColor = texture(u_texture, v_texCoord);
 }

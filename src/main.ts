@@ -33,15 +33,11 @@ const start = async () => {
   // gl setup
   const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 
-  // canvas.width = CANVAS_WIDTH;
-  // canvas.height = CANVAS_HEIGHT;
   const gl = canvas.getContext("webgl2")!;
-
   canvas.style.width = `${CANVAS_WIDTH}px`;
   canvas.style.height = `${CANVAS_HEIGHT}px`;
   canvas.width = CANVAS_WIDTH * globalThis.devicePixelRatio;
   canvas.height = CANVAS_HEIGHT * globalThis.devicePixelRatio;
-
   // read textures top-first
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
@@ -59,6 +55,55 @@ const start = async () => {
   //
   // SVG stuff
   //
+  // const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
+  // const svgTexture = gl.createTexture()!;
+
+  // const updateSvgTexture = async (weight: number) => {
+  //   const svgString = `
+  //     <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="green">
+  //       <style>
+  //         @font-face {
+  //           font-family: "var-font";
+  //           src: url("${fontDataBase64}");
+  //           font-weight: 400 700;
+  //           font-synthesis: none;
+  //         }
+
+  //         text {
+  //           --weight: ${weight};
+  //           font-size: 72px;
+  //           font-family: "var-font", sans-serif;
+  //           font-variation-settings: "wght" var(--weight);
+  //         }
+  //       </style>
+  //       <text class="test" x="0" y="72">free Victoria</text>
+  //     </svg>
+  // `;
+
+  //   const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
+
+  //   gl.activeTexture(gl.TEXTURE0);
+  //   gl.bindTexture(gl.TEXTURE_2D, svgTexture);
+  //   gl.texImage2D(
+  //     gl.TEXTURE_2D,
+  //     0,
+  //     gl.RGBA,
+  //     gl.RGBA,
+  //     gl.UNSIGNED_BYTE,
+  //     img,
+  //   );
+  //   gl.generateMipmap(gl.TEXTURE_2D);
+
+  //   document.getElementById("text-image-container")!.innerHTML = svgString;
+  // };
+
+  // experiment with 2d context for svg stuff
+  //
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = SVG_WIDTH * globalThis.devicePixelRatio;
+  textureCanvas.height = SVG_HEIGHT * globalThis.devicePixelRatio;
+  const textureCtx = textureCanvas.getContext("2d", { alpha: true })!;
+
   const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
   const svgTexture = gl.createTexture()!;
 
@@ -72,7 +117,7 @@ const start = async () => {
             font-weight: 400 700;
             font-synthesis: none;
           }
-  
+
           text {
             --weight: ${weight};
             font-size: 72px;
@@ -86,6 +131,10 @@ const start = async () => {
 
     const img = await loadImage(`data:image/svg+xml,${encodeURIComponent(svgString)}`);
 
+    // draw to canvas first
+    textureCtx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
+    textureCtx.drawImage(img, 0, 0, textureCanvas.width, textureCanvas.height);
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, svgTexture);
     gl.texImage2D(
@@ -94,7 +143,7 @@ const start = async () => {
       gl.RGBA,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      img,
+      textureCanvas,
     );
     gl.generateMipmap(gl.TEXTURE_2D);
 
@@ -184,7 +233,7 @@ const start = async () => {
     const weight = event.target.value;
     updateSvgTexture(weight);
   };
-  weightInput.addEventListener("input", debounce(onInput, 100));
+  weightInput.addEventListener("input", debounce(onInput, 250));
   await updateSvgTexture(parseInt(weightInput.value));
 
   const tick = async (_frameTime: number) => {
@@ -195,9 +244,13 @@ const start = async () => {
     //
     // render
     //
-    gl.clearColor(1, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(1, 1, 1, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     // const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
     const projMat = mat4_ortho(
@@ -211,32 +264,6 @@ const start = async () => {
     const viewMat = mat4_identity();
 
     // render to screen, later we will render to framebuffer instead
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(1, 0, 1, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // render svg texture
-    {
-      const modelPos = vec3_create(0, 0, -100);
-      const modelScale = vec3_create(SVG_WIDTH / 2, SVG_HEIGHT / 2, 1);
-
-      let modelMat = mat4_identity();
-      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
-      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
-
-      gl.useProgram(program);
-
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
-      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-      gl.bindTexture(gl.TEXTURE_2D, svgTexture);
-
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-    }
 
     // render f-texture
     {
@@ -257,6 +284,28 @@ const start = async () => {
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
       gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
       gl.bindTexture(gl.TEXTURE_2D, fTexture);
+
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    }
+
+    // render svg texture
+    {
+      const modelPos = vec3_create(0, 0, -100);
+      const modelScale = vec3_create(SVG_WIDTH / 2, SVG_HEIGHT / 2, 1);
+
+      let modelMat = mat4_identity();
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+      gl.useProgram(program);
+
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
+      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+      gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
