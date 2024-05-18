@@ -88,7 +88,7 @@ const start = async () => {
             font-variation-settings: "wght" var(--weight);
           }
         </style>
-        <text class="test" x="0" y="72">free Victoria</text>
+        <text class="test" x="0" y="72">asdfjkl;</text>
       </svg>
   `;
 
@@ -207,10 +207,10 @@ const start = async () => {
     //
     // render
     //
-    // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(1, 0, 0, 1);
+    gl.clearColor(1, 1, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.enable(gl.DEPTH_TEST);
@@ -281,7 +281,11 @@ const start = async () => {
     gl.bindTexture(gl.TEXTURE_2D, frameTexture);
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
     gl.generateMipmap(gl.TEXTURE_2D);
-    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+    // gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
+    // gl.generateMipmap(gl.TEXTURE_2D);
+    // gl.bindTexture(gl.TEXTURE_2D, null);
 
     // render refractive object
     {
@@ -290,10 +294,10 @@ const start = async () => {
 
     // render framebuffer texture to a quad
     {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(0, 1, 0, 1);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width / 3, canvas.height / 3);
+      // gl.clearColor(0, 1, 0, 1);
+      // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
       gl.useProgram(screenquadProgram);
 
