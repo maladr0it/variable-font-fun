@@ -2,6 +2,7 @@
 
 import { RECT_VERTS } from "./data/rect.ts";
 import { CUBE_VERTS } from "./data/cube.ts";
+import { VERTS as MONKEY_VERTS } from "./data/monkey.ts";
 
 import { log_clear, log_getContent, log_write } from "./static/log.ts";
 import { shader_load } from "./shader.ts";
@@ -22,11 +23,83 @@ const CANVAS_HEIGHT = 256;
 const SVG_WIDTH = 450;
 const SVG_HEIGHT = 94;
 
+const VERT_SIZE = 8; // assume all meshes have 8 floats per vertex for now
+
+const createVao = (gl: WebGL2RenderingContext, vertexData: Float32Array) => {
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  // position
+  gl.vertexAttribPointer(
+    0,
+    3,
+    gl.FLOAT,
+    false,
+    VERT_SIZE * vertexData.BYTES_PER_ELEMENT,
+    0 * vertexData.BYTES_PER_ELEMENT,
+  );
+  gl.enableVertexAttribArray(0);
+
+  // tex-coords
+  gl.vertexAttribPointer(
+    1,
+    2,
+    gl.FLOAT,
+    false,
+    VERT_SIZE * vertexData.BYTES_PER_ELEMENT,
+    3 * vertexData.BYTES_PER_ELEMENT,
+  );
+  gl.enableVertexAttribArray(1);
+
+  // normals
+  gl.vertexAttribPointer(
+    2,
+    3,
+    gl.FLOAT,
+    false,
+    VERT_SIZE * vertexData.BYTES_PER_ELEMENT,
+    5 * vertexData.BYTES_PER_ELEMENT,
+  );
+  gl.enableVertexAttribArray(2);
+
+  // clean up
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+  return vao;
+};
+
 const start = async () => {
+  const mat = mat4_identity();
+  mat[0] = 2;
+  mat[5] = 3;
+  mat[10] = 4;
+  mat[14] = -100;
+
+  console.log(mat);
+
+  const inv = mat4_inverseAffine(mat)!;
+
+  console.log(inv);
+
+  const normal = mat4_transpose(inv);
+
+  console.log(normal);
+
   //
   // State
   //
-  let modelRot = quat_identity();
+  // relative to canvas
+  let mouseX = 0;
+  let mouseY = 0;
+
+  let svgPos = vec3_create(0, 0, -200);
+  let glassyPos = vec3_create(0, 0, -100);
+  let glassyRot = quat_identity();
 
   const logEl = document.getElementById("log") as HTMLElement;
 
@@ -38,18 +111,19 @@ const start = async () => {
   canvas.style.height = `${CANVAS_HEIGHT}px`;
   canvas.width = CANVAS_WIDTH * globalThis.devicePixelRatio;
   canvas.height = CANVAS_HEIGHT * globalThis.devicePixelRatio;
+  // canvas.width = CANVAS_WIDTH;
+  // canvas.height = CANVAS_HEIGHT;
   // read textures top-first
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.clearColor(0, 1, 0, 1);
+  gl.clearColor(1, 1, 1, 1);
 
   // load shaders
   const program = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
   const refractiveProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/refractive.fs"))!;
-  const screenquadProgram = (await shader_load(gl, "./shaders/screenquad.vs", "./shaders/screenquad.fs"))!;
 
   // create textures
   const fTexture = gl.createTexture()!;
@@ -71,7 +145,7 @@ const start = async () => {
 
   const updateSvgTexture = async (weight: number) => {
     const svgString = `
-      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="black">
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="black" style="background-color: pink;">
         <style>
           @font-face {
             font-family: "var-font";
@@ -122,7 +196,6 @@ const start = async () => {
   //
   // Framebuffer stuff
   //
-
   const frameTexture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, frameTexture);
   gl.texImage2D(
@@ -136,6 +209,8 @@ const start = async () => {
     gl.UNSIGNED_BYTE,
     null,
   );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
 
   const colorRenderbuffer = gl.createRenderbuffer()!;
@@ -167,26 +242,29 @@ const start = async () => {
     console.error("Framebuffer is not complete.");
   }
 
-  // create vbo
-  const vbo = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-  gl.bufferData(gl.ARRAY_BUFFER, RECT_VERTS, gl.STATIC_DRAW);
+  const rectVao = createVao(gl, RECT_VERTS);
+  const cubeVao = createVao(gl, CUBE_VERTS);
+  const monkeyVao = createVao(gl, MONKEY_VERTS);
 
-  // create vao, using the bound vbo
-  const vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
+  // // create vbo
+  // const vbo = gl.createBuffer();
+  // gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  // gl.bufferData(gl.ARRAY_BUFFER, RECT_VERTS, gl.STATIC_DRAW);
 
-  // set vertex attributes
-  //
-  // pos
-  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 0 * Float32Array.BYTES_PER_ELEMENT);
-  gl.enableVertexAttribArray(0);
-  // tex-coords
-  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 3 * Float32Array.BYTES_PER_ELEMENT);
-  gl.enableVertexAttribArray(1);
-  // normal
-  gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 5 * Float32Array.BYTES_PER_ELEMENT);
-  gl.enableVertexAttribArray(2);
+  // // create vao, using the bound vbo
+  // const vao = gl.createVertexArray();
+
+  // // set vertex attributes
+  // //
+  // // pos
+  // gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 0 * Float32Array.BYTES_PER_ELEMENT);
+  // gl.enableVertexAttribArray(0);
+  // // tex-coords
+  // gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 3 * Float32Array.BYTES_PER_ELEMENT);
+  // gl.enableVertexAttribArray(1);
+  // // normal
+  // gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 8 * Float32Array.BYTES_PER_ELEMENT, 5 * Float32Array.BYTES_PER_ELEMENT);
+  // gl.enableVertexAttribArray(2);
 
   //
   // Event handlers
@@ -199,10 +277,22 @@ const start = async () => {
   weightInput.addEventListener("input", onInput);
   await updateSvgTexture(parseInt(weightInput.value));
 
+  canvas.addEventListener("mousemove", (event) => {
+    // get the mouse position relative to the canvas
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    mouseX = (event.clientX - rect.x) * scaleX;
+    mouseY = (event.clientY - rect.y) * scaleY;
+  });
+
   const tick = async (_frameTime: number) => {
     //
     // update
     //
+    glassyPos = vec3_create(mouseX - CANVAS_WIDTH / 2, -mouseY + CANVAS_HEIGHT / 2, glassyPos[2]);
+    glassyRot = quat_axisAngle(vec3_create(0, 1, 0), _frameTime / 1000);
+    // glassyRot = quat_axisAngle(vec3_create(0, 1, 0), Math.PI / 4);
 
     //
     // render
@@ -210,59 +300,34 @@ const start = async () => {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     // gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(1, 1, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
-    const projMat = mat4_ortho(
-      -CANVAS_WIDTH / 2,
-      +CANVAS_WIDTH / 2,
-      -CANVAS_HEIGHT / 2,
-      +CANVAS_HEIGHT / 2,
-      Z_NEAR,
-      Z_FAR,
-    );
+    const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
+    // const projMat = mat4_ortho(
+    //   -CANVAS_WIDTH / 2,
+    //   +CANVAS_WIDTH / 2,
+    //   -CANVAS_HEIGHT / 2,
+    //   +CANVAS_HEIGHT / 2,
+    //   Z_NEAR,
+    //   Z_FAR,
+    // );
     const viewMat = mat4_identity();
 
     // Render scene to framebuffer
     //
-    // render f-texture
-    {
-      const modelPos = vec3_create(0, 0, -150);
-      const modelScale = vec3_create(100, 100, 1);
-      modelRot = quat_mul(modelRot, quat_axisAngle(vec3_create(0, 1, 0), 0.01));
-
-      let modelMat = mat4_identity();
-
-      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
-      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
-
-      gl.useProgram(program);
-
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
-      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-      gl.bindTexture(gl.TEXTURE_2D, fTexture);
-
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-    }
-
     // render svg texture
     {
-      const modelPos = vec3_create(0, 0, -100);
-      const modelScale = vec3_create(SVG_WIDTH / 2, SVG_HEIGHT / 2, 1);
+      const modelPos = svgPos;
+      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
 
       let modelMat = mat4_identity();
       modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
       gl.useProgram(program);
@@ -274,6 +339,7 @@ const start = async () => {
       gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
       gl.bindTexture(gl.TEXTURE_2D, svgTexture);
 
+      gl.bindVertexArray(rectVao);
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
 
@@ -282,29 +348,35 @@ const start = async () => {
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
     gl.generateMipmap(gl.TEXTURE_2D);
 
-    // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
-    // gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
-    // gl.generateMipmap(gl.TEXTURE_2D);
-    // gl.bindTexture(gl.TEXTURE_2D, null);
-
     // render refractive object
     {
       // HERE
-    }
+      const modelPos = glassyPos;
+      const modelRot = glassyRot;
+      const modelScale = vec3_create(64, 64, 64);
 
-    // render framebuffer texture to a quad
-    {
-      // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, canvas.width / 3, canvas.height / 3);
-      // gl.clearColor(0, 1, 0, 1);
-      // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      let modelMat = mat4_identity();
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
-      gl.useProgram(screenquadProgram);
+      gl.useProgram(refractiveProgram);
 
-      gl.uniform1i(gl.getUniformLocation(screenquadProgram, "u_texture"), 0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_projMat"), false, projMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_viewMat"), false, viewMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_modelMat"), false, modelMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_normalMat"), false, normalMat);
+
+      gl.uniform3fv(gl.getUniformLocation(refractiveProgram, "u_cameraPos"), vec3_create(0, 0, 0));
+      gl.uniform1i(gl.getUniformLocation(refractiveProgram, "u_texture"), 0);
       gl.bindTexture(gl.TEXTURE_2D, frameTexture);
 
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+      // gl.bindVertexArray(cubeVao);
+      // gl.drawArrays(gl.TRIANGLES, 0, CUBE_VERTS.length / 8);
+
+      gl.bindVertexArray(monkeyVao);
+      gl.drawArrays(gl.TRIANGLES, 0, MONKEY_VERTS.length / 8);
     }
 
     //

@@ -16,7 +16,7 @@ out vec3 v_normal;
 void main() {
   v_pos = vec3(u_modelMat * vec4(a_pos, 1.0));
   v_texCoord = a_texCoord;
-  v_normal = vec3(u_normalMat * vec4(a_normal, 1.0));
+  v_normal = vec3(u_normalMat * vec4(a_normal, 0.0)); // maybe this needs to be normalized;
 
   gl_Position = u_projMat * u_viewMat * u_modelMat * vec4(a_pos, 1.0);
 }

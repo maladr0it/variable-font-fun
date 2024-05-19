@@ -9,7 +9,7 @@ const shader_createProgram = (
   {
     const success = gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS);
     if (!success) {
-      console.error(gl.getShaderInfoLog(vertexShader));
+      console.error("error compiling vertex shader", gl.getShaderInfoLog(vertexShader));
       gl.deleteShader(vertexShader);
       return null;
     }
@@ -21,7 +21,7 @@ const shader_createProgram = (
   {
     const success = gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS);
     if (!success) {
-      console.error(gl.getShaderInfoLog(fragmentShader));
+      console.error("error compiling fragment shader", gl.getShaderInfoLog(fragmentShader));
       gl.deleteShader(fragmentShader);
       return null;
     }
@@ -34,7 +34,7 @@ const shader_createProgram = (
   {
     const success = gl.getProgramParameter(program, gl.LINK_STATUS);
     if (!success) {
-      console.error(gl.getProgramInfoLog(program));
+      console.error("error linking program", gl.getProgramInfoLog(program));
       gl.deleteProgram(program);
       return null;
     }
