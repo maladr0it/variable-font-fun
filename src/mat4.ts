@@ -71,7 +71,6 @@ export const mat4_inverseAffine = (m: Mat4) => {
   result[12] = -(m[12] * result[0] + m[13] * result[4] + m[14] * result[8]);
   result[13] = -(m[12] * result[1] + m[13] * result[5] + m[14] * result[9]);
   result[14] = -(m[12] * result[2] + m[13] * result[6] + m[14] * result[10]);
-
   result[15] = 1;
 
   return result;

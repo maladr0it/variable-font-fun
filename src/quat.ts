@@ -1,3 +1,4 @@
+import { Mat4 } from "./mat4.ts";
 import { Vec3 } from "./vec3.ts";
 
 export type Quat = Float32Array & {
@@ -55,4 +56,39 @@ export const quat_mul = (a: Quat, b: Quat) => {
 
 export const quat_fromVec3 = (v: Vec3) => {
   return quat_create(v[0], v[1], v[2], 0);
+};
+
+export const quat_fromRotMat = (m: Mat4) => {
+  let q: Quat | null = null;
+  let t: number | null = null;
+
+  const m00 = m[0], m01 = m[4], m02 = m[8];
+  const m10 = m[1], m11 = m[5], m12 = m[9];
+  const m20 = m[2], m21 = m[6], m22 = m[10];
+
+  if (m22 < 0) {
+    if (m00 > m11) {
+      t = 1 + m00 - m11 - m22;
+      q = quat_create(t, m01 + m10, m20 + m02, m12 - m21);
+    } else {
+      t = 1 - m00 + m11 - m22;
+      q = quat_create(m01 + m10, t, m12 + m21, m20 - m02);
+    }
+  } else {
+    if (m00 < -m11) {
+      t = 1 - m00 - m11 + m22;
+      q = quat_create(m20 + m02, m12 + m21, t, m01 - m10);
+    } else {
+      t = 1 + m00 + m11 + m22;
+      q = quat_create(m12 - m21, m20 - m02, m01 - m10, t);
+    }
+  }
+
+  const s = 0.5 / Math.sqrt(t);
+  q[0] *= s;
+  q[1] *= s;
+  q[2] *= s;
+  q[3] *= s;
+
+  return q;
 };

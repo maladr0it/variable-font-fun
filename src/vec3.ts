@@ -19,22 +19,6 @@ export const vec3_create = (x: number, y: number, z: number) => {
   return result;
 };
 
-export const vec3_normalize = (v: Vec3) => {
-  const lenSquared = v[0] * v[0] + v[1] * v[1] * v[2] * v[2];
-  if (lenSquared === 0) {
-    return null;
-  }
-
-  const len = Math.sqrt(lenSquared);
-  const result = vec3_allocate();
-
-  result[0] = v[0] / len;
-  result[1] = v[1] / len;
-  result[2] = v[2] / len;
-
-  return result;
-};
-
 export const vec3_add = (a: Vec3, b: Vec3) => {
   const result = vec3_allocate();
 
@@ -45,12 +29,50 @@ export const vec3_add = (a: Vec3, b: Vec3) => {
   return result;
 };
 
+export const vec3_sub = (a: Vec3, b: Vec3) => {
+  const result = vec3_allocate();
+
+  for (let i = 0; i < 3; ++i) {
+    result[i] = a[i] - b[i];
+  }
+  return result;
+};
+
 export const vec3_mul = (a: Vec3, s: number) => {
   const result = vec3_allocate();
 
   for (let i = 0; i < 3; i += 1) {
     result[i] = a[i] * s;
   }
+
+  return result;
+};
+
+export const vec3_cross = (a: Vec3, b: Vec3) => {
+  const result = vec3_allocate();
+
+  result[0] = a[1] * b[2] - a[2] * b[1];
+  result[1] = a[2] * b[0] - a[0] * b[2];
+  result[2] = a[0] * b[1] - a[1] * b[0];
+  return result;
+};
+
+export const vec3_lenSquared = (a: Vec3) => {
+  return a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+};
+
+export const vec3_normalize = (v: Vec3) => {
+  const lenSquared = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  if (lenSquared === 0) {
+    return null;
+  }
+
+  const len = Math.sqrt(lenSquared);
+  const result = vec3_allocate();
+
+  result[0] = v[0] / len;
+  result[1] = v[1] / len;
+  result[2] = v[2] / len;
 
   return result;
 };
@@ -68,6 +90,7 @@ export const vec3_mulMat4 = (a: Vec3, b: Mat4) => {
       1 * b[4 * 3 + i]
     );
   }
+
   return result;
 };
 

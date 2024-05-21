@@ -18,11 +18,12 @@ void main() {
 
   vec3 viewDir = normalize(v_pos - u_cameraPos);
   vec3 normalDir = normalize(v_normal);
+
+  // pixel coordinates
   vec2 uv = gl_FragCoord.xy / vec2(textureSize(u_texture, 0));
 
   vec3 refractDir = refract(viewDir, normalDir, 1.0 / refractiveIndex);
-
-  vec2 refractUv = uv + refractDir.xy * 0.1;
+  vec2 refractUv = uv + refractDir.xy * 0.05;
 
   vec4 textureColor = texture(u_texture, refractUv);
 

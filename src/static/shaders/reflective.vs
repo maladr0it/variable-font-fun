@@ -11,11 +11,16 @@ layout(location = 2) in vec3 a_normal;
 
 out vec3 v_pos;
 out vec2 v_texCoord;
+out vec3 v_cubemapCoord;
 out vec3 v_normal;
 
 void main() {
+
   v_pos = vec3(u_modelMat * vec4(a_pos, 1.0));
+
   v_texCoord = a_texCoord;
+
+  v_cubemapCoord = a_pos;
   v_normal = vec3(u_normalMat * vec4(a_normal, 0.0));
 
   gl_Position = u_projMat * u_viewMat * u_modelMat * vec4(a_pos, 1.0);
