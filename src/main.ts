@@ -35,8 +35,10 @@ const VERT_SIZE = 8; // assume all meshes have 8 floats per vertex for now
 const canvasPosToScenePos = (x: number, y: number, depth: number, projMat: Mat4, viewMat: Mat4) => {
   const ndcX = (2 * x) / CANVAS_WIDTH - 1;
   const ndcY = 1 - (2 * y) / CANVAS_HEIGHT;
+  const ndcZ = ((Z_FAR + Z_NEAR) * depth - 2 * Z_FAR * Z_NEAR) / ((Z_FAR - Z_NEAR) * depth);
 
-  const clipspacePos = vec3_create(ndcX * depth, ndcY * depth, depth);
+  const ndcPos = vec3_create(ndcX, ndcY, ndcZ);
+  const clipspacePos = vec3_mul(ndcPos, depth);
   const viewProjMat = mat4_mul(viewMat, projMat);
   const inverseViewProjMat = mat4_inverseAffine(viewProjMat)!;
   const worldPos = vec3_mulMat4(clipspacePos, inverseViewProjMat);
@@ -101,8 +103,9 @@ const start = async () => {
   let mouseY = 0;
 
   const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
+
   // const viewMat = mat4_identity();
-  const viewMat = mat4_translate(vec3_mul(vec3_create(0, 0, +400), -1));
+  const viewMat = mat4_translate(vec3_mul(vec3_create(0, 0, 0), -1));
 
   const svgPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
 
@@ -263,7 +266,7 @@ const start = async () => {
     // update
     //
 
-    glassyPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
+    glassyPos = canvasPosToScenePos(mouseX, mouseY, 200, projMat, viewMat);
 
     log_write("glassyPos", glassyPos);
 
