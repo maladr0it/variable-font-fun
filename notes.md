@@ -1,37 +1,45 @@
 # TODO
 
-## HERE
+we set a viewing distance in px, something at 0,0,0 will display at the scale it would in 2d
+is this actually useful?
 
-[ ] how can we offer a coordinate system to users so y is down, just like SVG uses, while not changing our internals?
+we would really like svg graphics to use the same units as the 3d world
+let's scale everything up so this can work
+
+forget this for now, let's just use small units for the 3d world
 
 
-## fbo if we need it later
 
-// const colorRenderbuffer = gl.createRenderbuffer()!;
-  // gl.bindRenderbuffer(gl.RENDERBUFFER, colorRenderbuffer);
-  // gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, canvas.width, canvas.height);
-  // gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+## old code
 
-  // const depthRenderbuffer = gl.createRenderbuffer()!;
-  // gl.bindRenderbuffer(gl.RENDERBUFFER, depthRenderbuffer);
-  // gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width, canvas.height);
-  // gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+// render reflective svg texture
+    {
+      const modelPos = svgPos;
+      const modelRot = svgRot;
+      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
 
-  // const fbo = gl.createFramebuffer()!;
-  // gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      let modelMat = mat4_identity();
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
-  // gl.framebufferTexture2D(
-  //   gl.FRAMEBUFFER,
-  //   gl.COLOR_ATTACHMENT0,
-  //   gl.TEXTURE_2D,
-  //   frameTexture,
-  //   0,
-  // );
+      gl.useProgram(reflectiveProgram);
 
-  // gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, colorRenderbuffer);
-  // gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRenderbuffer);
-  // gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_projMat"), false, projMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_viewMat"), false, viewMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_modelMat"), false, modelMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_normalMat"), false, normalMat);
 
-  // if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-  //   console.error("Framebuffer is not complete.");
-  // }
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, svgTexture);
+      gl.uniform1i(gl.getUniformLocation(reflectiveProgram, "u_texture"), 0);
+
+      gl.activeTexture(gl.TEXTURE0 + 1);
+      gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyboxTexture);
+      gl.uniform1i(gl.getUniformLocation(reflectiveProgram, "u_cubemap"), 1);
+
+      gl.bindVertexArray(rectVao);
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    }
+

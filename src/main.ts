@@ -2,26 +2,25 @@
 
 import { RECT_VERTS } from "./data/rect.ts";
 import { CUBE_VERTS } from "./data/cube.ts";
-
 import { VERTS as MONKEY_VERTS } from "./data/monkey.ts";
 
 import { getDataURL, loadImage } from "./utils.ts";
 import { log_clear, log_getContent, log_write } from "./log.ts";
 
 import { shader_load } from "./shader.ts";
-
 import { Mat4, mat4_identity, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
-import { vec3_create, vec3_mulMat4, vec3_normalize } from "./vec3.ts";
+import { vec3_create, vec3_mul, vec3_mulMat4, vec3_normalize } from "./vec3.ts";
 import { quat_axisAngle, quat_identity, quat_mul } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
+import { vec4_create, vec4_mul, vec4_mulMat4 } from "./vec4.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
 
 const FOV = Math.PI / 2;
 const Z_NEAR = 0.1;
-const Z_FAR = 100_000;
+const Z_FAR = 1000;
 
 const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 512;
@@ -33,25 +32,14 @@ const SVG_SCALING_FACTOR = 2; // improve the quality of the SVG
 
 const VERT_SIZE = 8; // assume all meshes have 8 floats per vertex for now
 
-// TODO: revist this function to understand wtf is actually happening
-// given a depth, and canvas coords (pixels from top-left), figure out the world position that should be used (assume camera is at the origin looking in -z direction)
 const canvasPosToScenePos = (x: number, y: number, depth: number, projMat: Mat4, viewMat: Mat4) => {
   const ndcX = (2 * x) / CANVAS_WIDTH - 1;
   const ndcY = 1 - (2 * y) / CANVAS_HEIGHT;
-  // WHY DONT WE NEED THIS?
-  // const ndcZ = ((Z_FAR + Z_NEAR) + (2 * Z_FAR * Z_NEAR) / depth) / (Z_FAR - Z_NEAR);
 
-  const ndcCoords = vec3_create(ndcX, ndcY, 0); // z coord can be anything since we will overwrite it
+  const clipspacePos = vec3_create(ndcX * depth, ndcY * depth, depth);
   const viewProjMat = mat4_mul(viewMat, projMat);
-
-  // Invert the combined view-projection matrix
   const inverseViewProjMat = mat4_inverseAffine(viewProjMat)!;
-
-  // Convert NDC to world coordinates using vec3_mulMat4
-  const worldPos = vec3_mulMat4(ndcCoords, inverseViewProjMat);
-  worldPos[0] *= depth;
-  worldPos[1] *= depth;
-  worldPos[2] = -depth;
+  const worldPos = vec3_mulMat4(clipspacePos, inverseViewProjMat);
 
   return worldPos;
 };
@@ -113,7 +101,8 @@ const start = async () => {
   let mouseY = 0;
 
   const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
-  const viewMat = mat4_identity();
+  // const viewMat = mat4_identity();
+  const viewMat = mat4_translate(vec3_mul(vec3_create(0, 0, +400), -1));
 
   const svgPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
 
@@ -274,13 +263,11 @@ const start = async () => {
     // update
     //
 
-    const svgRot = quat_mul(
-      quat_axisAngle(vec3_normalize(vec3_create(0, 1, 0))!, frameTime / 1000),
-      quat_axisAngle(vec3_create(1, 0, 0), -Math.PI / 8),
-    );
-
     glassyPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
-    glassyRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
+
+    log_write("glassyPos", glassyPos);
+
+    // glassyRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
 
     //
     // render
@@ -293,6 +280,31 @@ const start = async () => {
     gl.disable(gl.CULL_FACE);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    // render a rectangle
+    {
+      const modelPos = vec3_create(0, 0, -100);
+      const modelScale = vec3_create(200, 100, 1);
+
+      let modelMat = mat4_identity();
+      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+
+      gl.useProgram(program);
+
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
+      gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fTexture);
+      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+
+      gl.bindVertexArray(rectVao);
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+    }
 
     // render plain svg texture
     {
@@ -317,37 +329,6 @@ const start = async () => {
 
       // gl.bindVertexArray(rectVao);
       // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
-    }
-
-    // render reflective svg texture
-    {
-      const modelPos = svgPos;
-      const modelRot = svgRot;
-      const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
-
-      let modelMat = mat4_identity();
-      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
-      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
-
-      gl.useProgram(reflectiveProgram);
-
-      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_projMat"), false, projMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_viewMat"), false, viewMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_modelMat"), false, modelMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(reflectiveProgram, "u_normalMat"), false, normalMat);
-
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, svgTexture);
-      gl.uniform1i(gl.getUniformLocation(reflectiveProgram, "u_texture"), 0);
-
-      gl.activeTexture(gl.TEXTURE0 + 1);
-      gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyboxTexture);
-      gl.uniform1i(gl.getUniformLocation(reflectiveProgram, "u_cubemap"), 1);
-
-      gl.bindVertexArray(rectVao);
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
     }
 
     // Store the scene so far in a texture, we will sample it when rendering the refractive object
