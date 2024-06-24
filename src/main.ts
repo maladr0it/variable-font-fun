@@ -1,19 +1,18 @@
 /// <reference lib="dom" />
 
-import { RECT_VERTS } from "./data/rect.ts";
-import { CUBE_VERTS } from "./data/cube.ts";
-import { VERTS as MONKEY_VERTS } from "./data/monkey.ts";
+import { RECT_VERTS as RECT_VERTS_RAW } from "./data/rect.ts";
 
 import { getDataURL, loadImage } from "./utils.ts";
 import { log_clear, log_getContent, log_write } from "./log.ts";
 
 import { shader_load } from "./shader.ts";
 import { Mat4, mat4_identity, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
-import { vec3_create, vec3_mul, vec3_mulMat4, vec3_normalize } from "./vec3.ts";
-import { quat_axisAngle, quat_identity, quat_mul } from "./quat.ts";
+import { vec3_create, vec3_mul, vec3_mulMat4, vec3_normalize, vec3_sub } from "./vec3.ts";
+import { quat_axisAngle, quat_identity } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
+import { vec2_create, vec2_sub } from "./vec2.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
 
@@ -29,7 +28,8 @@ const SVG_WIDTH = 450;
 const SVG_HEIGHT = 94;
 const SVG_SCALING_FACTOR = 2; // improve the quality of the SVG
 
-const VERT_SIZE = 8; // assume all meshes have 8 floats per vertex for now
+const VERT_SIZE_RAW = 8; // assume all meshes have 8 floats per vertex for now
+const VERT_SIZE = 11;
 
 const canvasPosToScenePos = (x: number, y: number, depth: number, projMat: Mat4, viewMat: Mat4) => {
   const ndcX = (2 * x) / CANVAS_WIDTH - 1;
@@ -44,6 +44,95 @@ const canvasPosToScenePos = (x: number, y: number, depth: number, projMat: Mat4,
 
   return worldPos;
 };
+
+const addTangentAttribs = (buffer: Float32Array) => {
+  const result = new Float32Array(buffer.length + (buffer.length / VERT_SIZE_RAW) * 3);
+
+  // TODO: check we aren't overshooting the buffer
+  for (let i = 0; i < buffer.length / VERT_SIZE_RAW; i += 3) {
+    const vert1Offset = (i + 0) * VERT_SIZE_RAW;
+    const vert1x = buffer[vert1Offset + 0];
+    const vert1y = buffer[vert1Offset + 1];
+    const vert1z = buffer[vert1Offset + 2];
+    const vert1u = buffer[vert1Offset + 3];
+    const vert1v = buffer[vert1Offset + 4];
+
+    const vert2Offset = (i + 1) * VERT_SIZE_RAW;
+    const vert2x = buffer[vert2Offset + 0];
+    const vert2y = buffer[vert2Offset + 1];
+    const vert2z = buffer[vert2Offset + 2];
+    const vert2u = buffer[vert2Offset + 3];
+    const vert2v = buffer[vert2Offset + 4];
+
+    const vert3Offset = (i + 2) * VERT_SIZE_RAW;
+    const vert3x = buffer[vert3Offset + 0];
+    const vert3y = buffer[vert3Offset + 1];
+    const vert3z = buffer[vert3Offset + 2];
+    const vert3u = buffer[vert3Offset + 3];
+    const vert3v = buffer[vert3Offset + 4];
+
+    const vert1Pos = vec3_create(vert1x, vert1y, vert1z);
+    const vert2Pos = vec3_create(vert2x, vert2y, vert2z);
+    const vert3Pos = vec3_create(vert3x, vert3y, vert3z);
+    const vert1Uv = vec2_create(vert1u, vert1v);
+    const vert2Uv = vec2_create(vert2u, vert2v);
+    const vert3Uv = vec2_create(vert3u, vert3v);
+
+    const edge1 = vec3_sub(vert2Pos, vert1Pos);
+    const edge2 = vec3_sub(vert3Pos, vert1Pos);
+
+    const deltaUv1 = vec2_sub(vert2Uv, vert1Uv);
+    const deltaUv2 = vec2_sub(vert3Uv, vert1Uv);
+
+    const f = 1 / (deltaUv1[0] * deltaUv2[1] - deltaUv2[0] * deltaUv1[1]);
+    const tangentX = f * (deltaUv2[1] * edge1[0] - deltaUv1[1] * edge2[0]);
+    const tangentY = f * (deltaUv2[1] * edge1[1] - deltaUv1[1] * edge2[1]);
+    const tangentZ = f * (deltaUv2[1] * edge1[2] - deltaUv1[1] * edge2[2]);
+
+    const vertOut1Offset = (i + 0) * VERT_SIZE;
+    result[vertOut1Offset + 0] = buffer[vert1Offset + 0];
+    result[vertOut1Offset + 1] = buffer[vert1Offset + 1];
+    result[vertOut1Offset + 2] = buffer[vert1Offset + 2];
+    result[vertOut1Offset + 3] = buffer[vert1Offset + 3];
+    result[vertOut1Offset + 4] = buffer[vert1Offset + 4];
+    result[vertOut1Offset + 5] = buffer[vert1Offset + 5];
+    result[vertOut1Offset + 6] = buffer[vert1Offset + 6];
+    result[vertOut1Offset + 7] = buffer[vert1Offset + 7];
+    result[vertOut1Offset + 8] = tangentX;
+    result[vertOut1Offset + 9] = tangentY;
+    result[vertOut1Offset + 10] = tangentZ;
+
+    const vertOut2Offset = (i + 1) * VERT_SIZE;
+    result[vertOut2Offset + 0] = buffer[vert2Offset + 0];
+    result[vertOut2Offset + 1] = buffer[vert2Offset + 1];
+    result[vertOut2Offset + 2] = buffer[vert2Offset + 2];
+    result[vertOut2Offset + 3] = buffer[vert2Offset + 3];
+    result[vertOut2Offset + 4] = buffer[vert2Offset + 4];
+    result[vertOut2Offset + 5] = buffer[vert2Offset + 5];
+    result[vertOut2Offset + 6] = buffer[vert2Offset + 6];
+    result[vertOut2Offset + 7] = buffer[vert2Offset + 7];
+    result[vertOut2Offset + 8] = tangentX;
+    result[vertOut2Offset + 9] = tangentY;
+    result[vertOut2Offset + 10] = tangentZ;
+
+    const vertOut3Offset = (i + 2) * VERT_SIZE;
+    result[vertOut3Offset + 0] = buffer[vert3Offset + 0];
+    result[vertOut3Offset + 1] = buffer[vert3Offset + 1];
+    result[vertOut3Offset + 2] = buffer[vert3Offset + 2];
+    result[vertOut3Offset + 3] = buffer[vert3Offset + 3];
+    result[vertOut3Offset + 4] = buffer[vert3Offset + 4];
+    result[vertOut3Offset + 5] = buffer[vert3Offset + 5];
+    result[vertOut3Offset + 6] = buffer[vert3Offset + 6];
+    result[vertOut3Offset + 7] = buffer[vert3Offset + 7];
+    result[vertOut3Offset + 8] = tangentX;
+    result[vertOut3Offset + 9] = tangentY;
+    result[vertOut3Offset + 10] = tangentZ;
+  }
+
+  return result;
+};
+
+const RECT_VERTS = addTangentAttribs(RECT_VERTS_RAW);
 
 const createVao = (gl: WebGL2RenderingContext, vertexData: Float32Array) => {
   const vbo = gl.createBuffer();
@@ -85,6 +174,17 @@ const createVao = (gl: WebGL2RenderingContext, vertexData: Float32Array) => {
     5 * vertexData.BYTES_PER_ELEMENT,
   );
   gl.enableVertexAttribArray(2);
+
+  // tangents
+  gl.vertexAttribPointer(
+    3,
+    3,
+    gl.FLOAT,
+    false,
+    VERT_SIZE * vertexData.BYTES_PER_ELEMENT,
+    8 * vertexData.BYTES_PER_ELEMENT,
+  );
+  gl.enableVertexAttribArray(3);
 
   // clean up
   gl.bindVertexArray(null);
@@ -130,8 +230,6 @@ const start = async () => {
   gl.clearColor(0, 0, 0, 1);
 
   // load shaders
-  const flatProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
-  const refractiveProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/refractive.fs"))!;
   const buttonProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/button.fs"))!;
 
   //
@@ -145,6 +243,30 @@ const start = async () => {
   const metalTexture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, metalTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await loadImage("./images/metal-diffuse.jpg"));
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const redTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, redTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new ImageData(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1),
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const sphereTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, sphereTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    await loadImage("./images/concentric-normal.png"),
+  );
   gl.generateMipmap(gl.TEXTURE_2D);
 
   const frameTexture = gl.createTexture()!;
@@ -242,8 +364,6 @@ const start = async () => {
   };
 
   const rectVao = createVao(gl, RECT_VERTS);
-  const cubeVao = createVao(gl, CUBE_VERTS);
-  const monkeyVao = createVao(gl, MONKEY_VERTS);
 
   //
   // Event handlers
@@ -300,7 +420,11 @@ const start = async () => {
         specular: vec3_create(1.0, 1.0, 1.0),
       };
 
-      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 400, projMat, viewMat);
+      // move the lighting direction over time
+      // directionalLight.direction = vec3_normalize(vec3_create(Math.sin(frameTime / 1000), 0, -1))!;
+      // directionalLight.direction = vec3_normalize(vec3_create(0, 10, -1))!;
+
+      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 100, projMat, viewMat);
       const modelRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
       const modelScale = vec3_create(sizeX, sizeY, 1);
 
@@ -322,12 +446,16 @@ const start = async () => {
       gl.uniform1f(gl.getUniformLocation(program, "u_cornerRadius"), cornerRadius);
 
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, fTexture);
+      gl.bindTexture(gl.TEXTURE_2D, redTexture);
       gl.uniform1i(gl.getUniformLocation(program, "u_diffuseMap"), 0);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, metalTexture);
       gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 1);
-      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, sphereTexture);
+      gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 2);
+
+      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 16);
 
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.dir"), directionalLight.direction);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.ambient"), directionalLight.ambient);
@@ -335,7 +463,7 @@ const start = async () => {
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.specular"), directionalLight.specular);
 
       gl.bindVertexArray(rectVao);
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
     }
 
     // render plain svg texture
@@ -374,30 +502,30 @@ const start = async () => {
 
     // render glassy object
     {
-      const modelPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
-      const modelRot = glassyRot;
-      const modelScale = vec3_create(10, 10, 10);
+      // const modelPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
+      // const modelRot = glassyRot;
+      // const modelScale = vec3_create(10, 10, 10);
 
-      let modelMat = mat4_identity();
-      modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
-      modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
-      const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
+      // let modelMat = mat4_identity();
+      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      // modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      // modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
+      // const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
-      gl.useProgram(refractiveProgram);
+      // gl.useProgram(refractiveProgram);
 
-      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_projMat"), false, projMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_viewMat"), false, viewMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_modelMat"), false, modelMat);
-      gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_normalMat"), false, normalMat);
-      gl.uniform3fv(gl.getUniformLocation(refractiveProgram, "u_cameraPos"), vec3_create(0, 0, 0));
+      // gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_projMat"), false, projMat);
+      // gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_viewMat"), false, viewMat);
+      // gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_modelMat"), false, modelMat);
+      // gl.uniformMatrix4fv(gl.getUniformLocation(refractiveProgram, "u_normalMat"), false, normalMat);
+      // gl.uniform3fv(gl.getUniformLocation(refractiveProgram, "u_cameraPos"), vec3_create(0, 0, 0));
 
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, frameTexture);
-      gl.uniform1i(gl.getUniformLocation(refractiveProgram, "u_texture"), 0);
+      // gl.activeTexture(gl.TEXTURE0);
+      // gl.bindTexture(gl.TEXTURE_2D, frameTexture);
+      // gl.uniform1i(gl.getUniformLocation(refractiveProgram, "u_texture"), 0);
 
-      gl.bindVertexArray(monkeyVao);
-      gl.drawArrays(gl.TRIANGLES, 0, MONKEY_VERTS.length / 8);
+      // gl.bindVertexArray(monkeyVao);
+      // gl.drawArrays(gl.TRIANGLES, 0, MONKEY_VERTS.length / 8);
     }
 
     //

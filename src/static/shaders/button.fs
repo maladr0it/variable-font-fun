@@ -16,6 +16,7 @@ uniform float u_cornerRadius;
 // material properties
 uniform sampler2D u_diffuseMap;
 uniform sampler2D u_specularMap;
+uniform sampler2D u_normalMap;
 uniform float u_shininess;
 
 // scene properties
@@ -25,6 +26,7 @@ uniform DirectionalLight u_directionalLight;
 in vec3 v_pos;
 in vec2 v_texCoord;
 in vec3 v_normal;
+in mat3 v_tbnMat;
 
 out vec4 outColor;
 
@@ -77,7 +79,16 @@ void main() {
   // Diffuse light
   vec3 viewDir = normalize(u_viewPos - v_pos);
 
-  vec3 normal = normalize(v_normal);
+  vec3 normal = texture(u_normalMap, v_texCoord).rgb;
+  normal = normal * 2.0f - 1.0f;
+  normal = normalize(v_tbnMat * normal);
+
+  if(v_tbnMat[0][0] > 100000.0f) {
+    outColor = vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    return;
+  }
+
+  // normal = vec3(0.0f, 0.0f, 1.0f);
 
   vec3 lightingResult = vec3(0.0f);
 
