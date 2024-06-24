@@ -14,7 +14,6 @@ import { quat_axisAngle, quat_identity, quat_mul } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
-import { vec4_create, vec4_mul, vec4_mulMat4 } from "./vec4.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
 
@@ -98,13 +97,13 @@ const start = async () => {
   //
   // State
   //
-  // relative to canvas
+  let cameraPos = vec3_create(0, 0, 0);
+
+  // mouse relative to canvas
   let mouseX = 0;
   let mouseY = 0;
 
   const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
-
-  // const viewMat = mat4_identity();
   const viewMat = mat4_translate(vec3_mul(vec3_create(0, 0, 0), -1));
 
   const svgPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
@@ -128,12 +127,12 @@ const start = async () => {
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.clearColor(1, 1, 1, 1);
+  gl.clearColor(0, 0, 0, 1);
 
   // load shaders
-  const program = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
+  const flatProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/frag.fs"))!;
   const refractiveProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/refractive.fs"))!;
-  const reflectiveProgram = (await shader_load(gl, "./shaders/reflective.vs", "./shaders/reflective.fs"))!;
+  const buttonProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/button.fs"))!;
 
   //
   // Create textures
@@ -141,6 +140,11 @@ const start = async () => {
   const fTexture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, fTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await loadImage("./images/f-texture.png"));
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const metalTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, metalTexture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await loadImage("./images/metal-diffuse.jpg"));
   gl.generateMipmap(gl.TEXTURE_2D);
 
   const frameTexture = gl.createTexture()!;
@@ -266,8 +270,6 @@ const start = async () => {
     // update
     //
 
-    glassyPos = canvasPosToScenePos(mouseX, mouseY, 200, projMat, viewMat);
-
     log_write("glassyPos", glassyPos);
 
     // glassyRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
@@ -284,26 +286,53 @@ const start = async () => {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // render a rectangle
+    // render a capsule button
     {
-      const modelPos = vec3_create(0, 0, -100);
-      const modelScale = vec3_create(200, 100, 1);
+      const program = buttonProgram;
+      const sizeX = 200;
+      const sizeY = 100;
+      const cornerRadius = 8;
+
+      const directionalLight = {
+        direction: vec3_create(0, 0, -1),
+        ambient: vec3_create(0.2, 0.2, 0.2),
+        diffuse: vec3_create(0.5, 0.5, 0.5),
+        specular: vec3_create(1.0, 1.0, 1.0),
+      };
+
+      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 400, projMat, viewMat);
+      const modelRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
+      const modelScale = vec3_create(sizeX, sizeY, 1);
 
       let modelMat = mat4_identity();
       modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
+      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
       gl.useProgram(program);
 
+      gl.uniform3fv(gl.getUniformLocation(program, "u_viewPos"), cameraPos);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
 
+      gl.uniform2f(gl.getUniformLocation(program, "u_size"), sizeX, sizeY);
+      gl.uniform1f(gl.getUniformLocation(program, "u_cornerRadius"), cornerRadius);
+
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fTexture);
-      gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
+      gl.uniform1i(gl.getUniformLocation(program, "u_diffuseMap"), 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, metalTexture);
+      gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 1);
+      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
+
+      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.dir"), directionalLight.direction);
+      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.ambient"), directionalLight.ambient);
+      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.diffuse"), directionalLight.diffuse);
+      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.specular"), directionalLight.specular);
 
       gl.bindVertexArray(rectVao);
       gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
@@ -345,9 +374,9 @@ const start = async () => {
 
     // render glassy object
     {
-      const modelPos = glassyPos;
+      const modelPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
       const modelRot = glassyRot;
-      const modelScale = vec3_create(32, 32, 32);
+      const modelScale = vec3_create(10, 10, 10);
 
       let modelMat = mat4_identity();
       modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
