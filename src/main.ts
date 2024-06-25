@@ -526,7 +526,7 @@ const start = async () => {
         gl.bindTexture(gl.TEXTURE_2D, metalNormalTexture);
         gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 3);
 
-        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 96);
+        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 64);
 
         gl.bindVertexArray(rectVao);
         gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
@@ -563,7 +563,7 @@ const start = async () => {
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
 
-    //
+    // distort the scene when the mouse is down
     {
     }
     // render glassy object
