@@ -9,6 +9,16 @@ struct DirectionalLight {
   vec3 specular;
 };
 
+struct PointLight {
+  vec3 pos;
+  vec3 ambient;
+  vec3 diffuse;
+  vec3 specular;
+  float constant;
+  float linear;
+  float quadratic;
+};
+
 // ui properties
 uniform vec2 u_size;
 uniform float u_cornerRadius;
@@ -22,6 +32,8 @@ uniform float u_shininess;
 // scene properties
 uniform vec3 u_viewPos;
 uniform DirectionalLight u_directionalLight;
+uniform int u_numPointLights;
+uniform PointLight[16] u_pointLights;
 
 in vec3 v_pos;
 in vec2 v_texCoord;
@@ -43,6 +55,27 @@ vec3 calcDirectionalLight(DirectionalLight light, vec3 normal, vec3 viewDir) {
   // specular
   vec3 reflectDir = reflect(-lightDir, normal);
   float specularStrength = pow(max(dot(viewDir, reflectDir), 0.0f), u_shininess);
+  vec3 specular = light.specular * (specularStrength * vec3(texture(u_specularMap, v_texCoord)));
+
+  return ambient + diffuse + specular;
+}
+
+vec3 calcPointLight(PointLight light, vec3 normal, vec3 viewDir) {
+  vec3 lightDir = normalize(light.pos - v_pos);
+  float distance = length(light.pos - v_pos);
+  float attenuation = 1.0f / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+
+  // ambient
+  float ambientStrength = attenuation;
+  vec3 ambient = ambientStrength * light.ambient * vec3(texture(u_diffuseMap, v_texCoord));
+
+  // diffuse
+  float diffuseStrength = attenuation * max(dot(normal, lightDir), 0.0f);
+  vec3 diffuse = light.diffuse * diffuseStrength * vec3(texture(u_diffuseMap, v_texCoord));
+
+  // specular
+  vec3 reflectDir = reflect(-lightDir, normal);
+  float specularStrength = attenuation * pow(max(dot(viewDir, reflectDir), 0.0f), u_shininess);
   vec3 specular = light.specular * (specularStrength * vec3(texture(u_specularMap, v_texCoord)));
 
   return ambient + diffuse + specular;
@@ -76,29 +109,20 @@ void main() {
     discard;
   }
 
-  // Diffuse light
-  vec3 viewDir = normalize(u_viewPos - v_pos);
-
   vec3 normal = texture(u_normalMap, v_texCoord).rgb;
+
   normal = normal * 2.0f - 1.0f;
   normal = normalize(v_tbnMat * normal);
 
-  if(v_tbnMat[0][0] > 100000.0f) {
-    outColor = vec4(0.0f, 1.0f, 0.0f, 1.0f);
-    return;
-  }
-
-  // normal = vec3(0.0f, 0.0f, 1.0f);
+  // Lighting
+  vec3 viewDir = normalize(u_viewPos - v_pos);
 
   vec3 lightingResult = vec3(0.0f);
-
   lightingResult += calcDirectionalLight(u_directionalLight, normal, viewDir);
 
+  for(int i = 0; i < u_numPointLights; i++) {
+    lightingResult += calcPointLight(u_pointLights[i], normal, viewDir);
+  }
+
   outColor = vec4(lightingResult, 1.0f);
-
-  // vec4 flatColor = texture(u_diffuseMap, v_texCoord);
-
-  // outColor = flatColor;
-
-  // outColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
 }

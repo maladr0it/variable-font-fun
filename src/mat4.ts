@@ -1,5 +1,5 @@
 import { Quat } from "./quat.ts";
-import { Vec3 } from "./vec3.ts";
+import { Vec3, vec3_cross, vec3_dot, vec3_lenSquared, vec3_mul, vec3_normalize, vec3_sub } from "./vec3.ts";
 
 export type Mat4 = Float32Array & {
   _tag: "Mat4";
@@ -153,6 +153,45 @@ export const mat4_ortho = (left: number, right: number, bottom: number, top: num
   result[12] = -(right + left) / width;
   result[13] = -(top + bottom) / height;
   result[14] = -(far + near) / depth;
+  result[15] = 1;
+
+  return result;
+};
+
+export const mat4_lookAt = (position: Vec3, target: Vec3, up: Vec3) => {
+  const facing = vec3_sub(target, position);
+  if (vec3_lenSquared(facing) === 0) {
+    // Position and target are the same.
+    return null;
+  } else if (vec3_lenSquared(vec3_cross(up, facing)) === 0) {
+    // Up and facing are parallel.
+    return null;
+  }
+
+  const zAxis = vec3_normalize(vec3_mul(facing, -1))!;
+  const xAxis = vec3_normalize(vec3_cross(up, zAxis))!;
+  const yAxis = vec3_normalize(vec3_cross(zAxis, xAxis))!;
+
+  const result = mat4_allocate();
+
+  result[0] = xAxis[0];
+  result[1] = yAxis[0];
+  result[2] = zAxis[0];
+  result[3] = 0;
+
+  result[4] = xAxis[1];
+  result[5] = yAxis[1];
+  result[6] = zAxis[1];
+  result[7] = 0;
+
+  result[8] = xAxis[2];
+  result[9] = yAxis[2];
+  result[10] = zAxis[2];
+  result[11] = 0;
+
+  result[12] = 0;
+  result[13] = 0;
+  result[14] = 0;
   result[15] = 1;
 
   return result;

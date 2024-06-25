@@ -1,18 +1,22 @@
 /// <reference lib="dom" />
 
 import { RECT_VERTS as RECT_VERTS_RAW } from "./data/rect.ts";
+import { CUBE_VERTS as CUBE_VERTS_RAW } from "./data/cube.ts";
 
 import { getDataURL, loadImage } from "./utils.ts";
 import { log_clear, log_getContent, log_write } from "./log.ts";
 
 import { shader_load } from "./shader.ts";
-import { Mat4, mat4_identity, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
+import { Mat4, mat4_identity, mat4_lookAt, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
 import { vec3_create, vec3_mul, vec3_mulMat4, vec3_normalize, vec3_sub } from "./vec3.ts";
 import { quat_axisAngle, quat_identity } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
 import { vec2_create, vec2_sub } from "./vec2.ts";
+import { quat_fromRotMat } from "./quat.ts";
+import { Vec3 } from "./vec3.ts";
+import { quat_mul } from "./quat.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
 
@@ -133,6 +137,9 @@ const addTangentAttribs = (buffer: Float32Array) => {
 };
 
 const RECT_VERTS = addTangentAttribs(RECT_VERTS_RAW);
+const CUBE_VERTS = addTangentAttribs(CUBE_VERTS_RAW);
+
+console.log(CUBE_VERTS);
 
 const createVao = (gl: WebGL2RenderingContext, vertexData: Float32Array) => {
   const vbo = gl.createBuffer();
@@ -242,7 +249,14 @@ const start = async () => {
 
   const metalTexture = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, metalTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await loadImage("./images/metal-diffuse.jpg"));
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    await loadImage("./images/metal_0026_color_1k.jpg"),
+  );
   gl.generateMipmap(gl.TEXTURE_2D);
 
   const redTexture = gl.createTexture()!;
@@ -253,19 +267,19 @@ const start = async () => {
     gl.RGBA,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
-    new ImageData(new Uint8ClampedArray([255, 0, 0, 255]), 1, 1),
+    new ImageData(new Uint8ClampedArray([128, 128, 128, 255]), 1, 1),
   );
   gl.generateMipmap(gl.TEXTURE_2D);
 
-  const sphereTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, sphereTexture);
+  const normalTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, normalTexture);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
     gl.RGBA,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
-    await loadImage("./images/concentric-normal.png"),
+    await loadImage("./images/metal_0026_normal_opengl_1k.png"),
   );
   gl.generateMipmap(gl.TEXTURE_2D);
 
@@ -364,6 +378,7 @@ const start = async () => {
   };
 
   const rectVao = createVao(gl, RECT_VERTS);
+  const cubeVao = createVao(gl, CUBE_VERTS);
 
   //
   // Event handlers
@@ -392,8 +407,6 @@ const start = async () => {
 
     log_write("glassyPos", glassyPos);
 
-    // glassyRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
-
     //
     // render
     //
@@ -409,28 +422,36 @@ const start = async () => {
     // render a capsule button
     {
       const program = buttonProgram;
-      const sizeX = 200;
+      const sizeX = 100;
       const sizeY = 100;
+      const distance = 75;
       const cornerRadius = 8;
 
       const directionalLight = {
-        direction: vec3_create(0, 0, -1),
+        dir: vec3_create(0, -0.25, -1),
         ambient: vec3_create(0.2, 0.2, 0.2),
-        diffuse: vec3_create(0.5, 0.5, 0.5),
+        // diffuse: vec3_create(0.5, 0.5, 0.5),
         specular: vec3_create(1.0, 1.0, 1.0),
+        diffuse: vec3_create(0.5, 0.5, 0.5),
+        // specular: vec3_create(0.7, 0.7, 0.7),
       };
 
-      // move the lighting direction over time
-      // directionalLight.direction = vec3_normalize(vec3_create(Math.sin(frameTime / 1000), 0, -1))!;
-      // directionalLight.direction = vec3_normalize(vec3_create(0, 10, -1))!;
-
-      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 100, projMat, viewMat);
-      const modelRot = quat_axisAngle(vec3_create(0, 1, 0), frameTime / 1000);
+      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, distance, projMat, viewMat);
       const modelScale = vec3_create(sizeX, sizeY, 1);
+
+      const lookAtMat = mat4_lookAt(
+        modelPos,
+        canvasPosToScenePos(mouseX, mouseY, 10, projMat, viewMat),
+        GLOBAL_UP,
+      )!;
+
+      // face the model in the -z direction before orienting it
+      let modelOrientation = quat_axisAngle(vec3_create(0, 1, 0), Math.PI);
+      modelOrientation = quat_mul(quat_fromRotMat(lookAtMat), modelOrientation);
 
       let modelMat = mat4_identity();
       modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      modelMat = mat4_mul(modelMat, mat4_rot(modelRot));
+      modelMat = mat4_mul(modelMat, mat4_rot(modelOrientation));
       modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
       const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
 
@@ -452,12 +473,12 @@ const start = async () => {
       gl.bindTexture(gl.TEXTURE_2D, metalTexture);
       gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 1);
       gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, sphereTexture);
+      gl.bindTexture(gl.TEXTURE_2D, normalTexture);
       gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 2);
 
-      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 16);
+      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
 
-      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.dir"), directionalLight.direction);
+      gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.dir"), directionalLight.dir);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.ambient"), directionalLight.ambient);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.diffuse"), directionalLight.diffuse);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.specular"), directionalLight.specular);

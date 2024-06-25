@@ -20,18 +20,10 @@ void main() {
   v_texCoord = a_texCoord;
   v_normal = normalize(vec3(u_normalMat * vec4(a_normal, 0.0)));
 
-  if(a_tangent.x == 0.0) {
-    // return;
-  }
-
   // get vec
   vec3 T = normalize(vec3(u_modelMat * vec4(a_tangent, 0.0)));
   vec3 N = normalize(vec3(u_modelMat * vec4(a_normal, 0.0)));
   vec3 B = normalize(cross(N, T));
-
-  // vec3 T = normalize((u_modelMat * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-  // vec3 N = normalize((u_modelMat * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
-  // vec3 B = normalize((u_modelMat * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 
   v_tbnMat = mat3(T, B, N);
 

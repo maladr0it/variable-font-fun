@@ -48,6 +48,10 @@ export const vec3_mul = (a: Vec3, s: number) => {
   return result;
 };
 
+export const vec3_dot = (a: Vec3, b: Vec3) => {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+};
+
 export const vec3_cross = (a: Vec3, b: Vec3) => {
   const result = vec3_allocate();
 
