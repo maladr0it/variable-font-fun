@@ -4,18 +4,19 @@ import { RECT_VERTS as RECT_VERTS_RAW } from "./data/rect.ts";
 import { CUBE_VERTS as CUBE_VERTS_RAW } from "./data/cube.ts";
 
 import { getDataURL, loadImage } from "./utils.ts";
-import { log_clear, log_getContent, log_write } from "./log.ts";
+import { log_clear, log_getContent } from "./log.ts";
 
 import { shader_load } from "./shader.ts";
 import { Mat4, mat4_identity, mat4_lookAt, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
 import { vec3_create, vec3_mul, vec3_mulMat4, vec3_sub } from "./vec3.ts";
-import { quat_axisAngle, quat_identity } from "./quat.ts";
+import { quat_axisAngle } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
 import { vec2_create, vec2_sub } from "./vec2.ts";
 import { quat_fromRotMat } from "./quat.ts";
 import { quat_mul } from "./quat.ts";
+import { vec3_add } from "./vec3.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
 
@@ -27,7 +28,7 @@ const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 512;
 const CANVAS_SCALING_FACTOR = 2;
 
-const BUTTON_WIDTH = 200;
+const BUTTON_WIDTH = 240;
 const BUTTON_HEIGHT = 100;
 const SVG_SCALING_FACTOR = 4; // improve the quality of the SVG
 
@@ -206,9 +207,10 @@ const start = async () => {
   // mouse relative to canvas
   let mouseX = 0;
   let mouseY = 0;
+  let mouseDown = false;
 
   // button properties
-  let buttonText = "hello";
+  let buttonText = "Buy";
   let fontWeight = 400;
   let cornerRadius = 0;
 
@@ -366,7 +368,7 @@ const start = async () => {
           text {
             --weight: ${weight};
             font-size: 72px;
-            font-family: "var-font", sans-serif;
+            font-family: "var-font";
             font-variation-settings: "wght" var(--weight);
           }
         </style>
@@ -395,7 +397,6 @@ const start = async () => {
   };
 
   const rectVao = createVao(gl, RECT_VERTS);
-  const cubeVao = createVao(gl, CUBE_VERTS);
 
   //
   // Event handlers
@@ -407,6 +408,14 @@ const start = async () => {
     const scaleY = CANVAS_HEIGHT / rect.height;
     mouseX = (event.clientX - rect.x) * scaleX;
     mouseY = (event.clientY - rect.y) * scaleY;
+  });
+
+  canvas.addEventListener("mousedown", () => {
+    mouseDown = true;
+  });
+
+  canvas.addEventListener("mouseup", () => {
+    mouseDown = false;
   });
 
   const weightInput = document.getElementById("weight") as HTMLInputElement;
@@ -448,7 +457,7 @@ const start = async () => {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // gl.enable(gl.DEPTH_TEST);
-    gl.disable(gl.CULL_FACE);
+    gl.enable(gl.CULL_FACE);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
@@ -458,13 +467,16 @@ const start = async () => {
       const distance = 75;
 
       const directionalLight = {
-        dir: vec3_create(0, 0, -1),
+        dir: vec3_create(0, -0.25, -1),
         ambient: vec3_create(0.2, 0.2, 0.2),
         diffuse: vec3_create(0.5, 0.5, 0.5),
         specular: vec3_create(1.0, 1.0, 1.0),
       };
 
-      const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, distance, projMat, viewMat);
+      let modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, distance, projMat, viewMat);
+      if (mouseDown) {
+        modelPos = vec3_add(modelPos, vec3_create(0, 0, -5));
+      }
       const modelScale = vec3_create(BUTTON_WIDTH, BUTTON_HEIGHT, 1);
 
       const lookAtMat = mat4_lookAt(
@@ -514,7 +526,7 @@ const start = async () => {
         gl.bindTexture(gl.TEXTURE_2D, metalNormalTexture);
         gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 3);
 
-        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
+        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 96);
 
         gl.bindVertexArray(rectVao);
         gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
@@ -542,33 +554,6 @@ const start = async () => {
       }
     }
 
-    // render plain svg texture
-    {
-      // const program = flatProgram;
-
-      // const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
-      // const modelScale = vec3_create(BUTTON_WIDTH, BUTTON_HEIGHT, 1);
-
-      // let modelMat = mat4_identity();
-      // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
-      // modelMat = mat4_mul(modelMat, mat4_translate(modelPos));
-      // const normalMat = mat4_transpose(mat4_inverseAffine(modelMat)!);
-
-      // gl.useProgram(program);
-
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_projMat"), false, projMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_viewMat"), false, viewMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
-      // gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
-
-      // gl.activeTexture(gl.TEXTURE0);
-      // gl.bindTexture(gl.TEXTURE_2D, svgTexture);
-      // gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
-
-      // gl.bindVertexArray(rectVao);
-      // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
-    }
-
     // Store the scene so far in a texture, we will sample it when rendering the refractive object
     gl.bindTexture(gl.TEXTURE_2D, frameTexture);
     gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, canvas.width, canvas.height, 0);
@@ -578,6 +563,9 @@ const start = async () => {
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
 
+    //
+    {
+    }
     // render glassy object
     {
       // const modelPos = canvasPosToScenePos(mouseX, mouseY, 100, projMat, viewMat);
