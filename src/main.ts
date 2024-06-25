@@ -8,14 +8,13 @@ import { log_clear, log_getContent, log_write } from "./log.ts";
 
 import { shader_load } from "./shader.ts";
 import { Mat4, mat4_identity, mat4_lookAt, mat4_mul, mat4_proj, mat4_rot, mat4_translate } from "./mat4.ts";
-import { vec3_create, vec3_mul, vec3_mulMat4, vec3_normalize, vec3_sub } from "./vec3.ts";
+import { vec3_create, vec3_mul, vec3_mulMat4, vec3_sub } from "./vec3.ts";
 import { quat_axisAngle, quat_identity } from "./quat.ts";
 import { mat4_transpose } from "./mat4.ts";
 import { mat4_inverseAffine } from "./mat4.ts";
 import { mat4_scale } from "./mat4.ts";
 import { vec2_create, vec2_sub } from "./vec2.ts";
 import { quat_fromRotMat } from "./quat.ts";
-import { Vec3 } from "./vec3.ts";
 import { quat_mul } from "./quat.ts";
 
 const GLOBAL_UP = vec3_create(0, 1, 0);
@@ -28,9 +27,9 @@ const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 512;
 const CANVAS_SCALING_FACTOR = 2;
 
-const SVG_WIDTH = 450;
-const SVG_HEIGHT = 94;
-const SVG_SCALING_FACTOR = 2; // improve the quality of the SVG
+const BUTTON_WIDTH = 200;
+const BUTTON_HEIGHT = 100;
+const SVG_SCALING_FACTOR = 4; // improve the quality of the SVG
 
 const VERT_SIZE_RAW = 8; // assume all meshes have 8 floats per vertex for now
 const VERT_SIZE = 11;
@@ -139,8 +138,6 @@ const addTangentAttribs = (buffer: Float32Array) => {
 const RECT_VERTS = addTangentAttribs(RECT_VERTS_RAW);
 const CUBE_VERTS = addTangentAttribs(CUBE_VERTS_RAW);
 
-console.log(CUBE_VERTS);
-
 const createVao = (gl: WebGL2RenderingContext, vertexData: Float32Array) => {
   const vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -210,13 +207,13 @@ const start = async () => {
   let mouseX = 0;
   let mouseY = 0;
 
+  // button properties
+  let buttonText = "hello";
+  let fontWeight = 400;
+  let cornerRadius = 0;
+
   const projMat = mat4_proj(FOV, CANVAS_WIDTH / CANVAS_HEIGHT, Z_NEAR, Z_FAR);
   const viewMat = mat4_translate(vec3_mul(vec3_create(0, 0, 0), -1));
-
-  const svgPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
-
-  let glassyPos = vec3_create(0, 0, -1);
-  let glassyRot = quat_identity();
 
   const logEl = document.getElementById("log") as HTMLElement;
 
@@ -234,7 +231,7 @@ const start = async () => {
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.clearColor(0, 0, 0, 1);
+  gl.clearColor(0, 0, 0, 0);
 
   // load shaders
   const buttonProgram = (await shader_load(gl, "./shaders/vert.vs", "./shaders/button.fs"))!;
@@ -242,13 +239,8 @@ const start = async () => {
   //
   // Create textures
   //
-  const fTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, fTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, await loadImage("./images/f-texture.png"));
-  gl.generateMipmap(gl.TEXTURE_2D);
-
-  const metalTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, metalTexture);
+  const metalColorTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, metalColorTexture);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
@@ -259,20 +251,20 @@ const start = async () => {
   );
   gl.generateMipmap(gl.TEXTURE_2D);
 
-  const redTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, redTexture);
+  const metalSpecularTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, metalSpecularTexture);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
     gl.RGBA,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
-    new ImageData(new Uint8ClampedArray([128, 128, 128, 255]), 1, 1),
+    await loadImage("./images/metal_0026_metallic_1k.jpg"),
   );
   gl.generateMipmap(gl.TEXTURE_2D);
 
-  const normalTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_2D, normalTexture);
+  const metalNormalTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, metalNormalTexture);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
@@ -280,6 +272,54 @@ const start = async () => {
     gl.RGBA,
     gl.UNSIGNED_BYTE,
     await loadImage("./images/metal_0026_normal_opengl_1k.png"),
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const solidTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, solidTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new ImageData(new Uint8ClampedArray([0, 0, 0, 255]), 1, 1),
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const fullTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, fullTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new ImageData(new Uint8ClampedArray([255, 255, 255, 255]), 1, 1),
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const emptyTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, emptyTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new ImageData(new Uint8ClampedArray([0, 0, 0, 0]), 1, 1),
+  );
+  gl.generateMipmap(gl.TEXTURE_2D);
+
+  const plainNormalTexture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, plainNormalTexture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    await loadImage("./images/plain-normal.png"),
   );
   gl.generateMipmap(gl.TEXTURE_2D);
 
@@ -299,44 +339,22 @@ const start = async () => {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  const skyboxTexture = gl.createTexture()!;
-  gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyboxTexture);
-  const skyboxPaths = [
-    "./images/sky/px.jpg",
-    "./images/sky/nx.jpg",
-    "./images/sky/py.jpg",
-    "./images/sky/ny.jpg",
-    "./images/sky/pz.jpg",
-    "./images/sky/nz.jpg",
-  ];
-  for (let i = 0; i < 6; i += 1) {
-    gl.texImage2D(
-      gl.TEXTURE_CUBE_MAP_POSITIVE_X + i,
-      0,
-      gl.RGBA,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      await loadImage(skyboxPaths[i]),
-    );
-  }
-  gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-
   gl.bindTexture(gl.TEXTURE_2D, null);
 
   //
   // SVG stuff
   //
   const textureCanvas = document.createElement("canvas");
-  textureCanvas.width = SVG_WIDTH * globalThis.devicePixelRatio * SVG_SCALING_FACTOR;
-  textureCanvas.height = SVG_HEIGHT * globalThis.devicePixelRatio * SVG_SCALING_FACTOR;
+  textureCanvas.width = BUTTON_WIDTH * globalThis.devicePixelRatio * SVG_SCALING_FACTOR;
+  textureCanvas.height = BUTTON_HEIGHT * globalThis.devicePixelRatio * SVG_SCALING_FACTOR;
   const textureCtx = textureCanvas.getContext("2d")!;
 
   const fontDataBase64 = await getDataURL("./AROneSans-VariableFont_ARRR,wght.ttf");
   const svgTexture = gl.createTexture()!;
 
-  const updateSvgTexture = async (weight: number) => {
+  const updateSvgTexture = async (text: string, weight: number) => {
     const svgString = `
-      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" fill="black" style="background-color: transparent;">
+      <svg xmlns="http://www.w3.org/2000/svg" id="text-image" width="${BUTTON_WIDTH}" height="${BUTTON_HEIGHT}" viewBox="0 0 ${BUTTON_WIDTH} ${BUTTON_HEIGHT}" fill="white" style="background-color: transparent;">
         <style>
           @font-face {
             font-family: "var-font";
@@ -346,14 +364,15 @@ const start = async () => {
           }
 
           text {
-            --local-weight: ${weight};
-            --weight: var(--global-weight, var(--local-weight));
+            --weight: ${weight};
             font-size: 72px;
             font-family: "var-font", sans-serif;
             font-variation-settings: "wght" var(--weight);
           }
         </style>
-        <text class="test" x="50%" y="72" text-anchor="middle">Expressive</text>
+        <text class="test" x="50%" y="72" text-anchor="middle">
+          ${text}
+        </text>
       </svg>
   `;
 
@@ -373,8 +392,6 @@ const start = async () => {
       textureCanvas,
     );
     gl.generateMipmap(gl.TEXTURE_2D);
-
-    document.documentElement.style.setProperty("--global-weight", weight.toString());
   };
 
   const rectVao = createVao(gl, RECT_VERTS);
@@ -383,14 +400,6 @@ const start = async () => {
   //
   // Event handlers
   //
-  const weightInput = document.getElementById("weight") as HTMLInputElement;
-  const onInput = (event: any) => {
-    const weight = event.target.value;
-    updateSvgTexture(weight);
-  };
-  weightInput.addEventListener("input", onInput);
-  await updateSvgTexture(parseInt(weightInput.value));
-
   canvas.addEventListener("mousemove", (event) => {
     // get the mouse position relative to the canvas
     const rect = canvas.getBoundingClientRect();
@@ -400,12 +409,36 @@ const start = async () => {
     mouseY = (event.clientY - rect.y) * scaleY;
   });
 
+  const weightInput = document.getElementById("weight") as HTMLInputElement;
+  weightInput.value = fontWeight.toString();
+
+  weightInput.addEventListener("input", (event: any) => {
+    const value = event.target.value;
+    fontWeight = value;
+    updateSvgTexture(buttonText, value);
+  });
+
+  const textInput = document.getElementById("text") as HTMLInputElement;
+  textInput.value = buttonText;
+  textInput.addEventListener("input", (event: any) => {
+    const value = event.target.value;
+    buttonText = value;
+    updateSvgTexture(value, fontWeight);
+  });
+
+  const cornerRadiusInput = document.getElementById("corner-radius") as HTMLInputElement;
+  cornerRadiusInput.value = cornerRadius.toString();
+  cornerRadiusInput.addEventListener("input", (event: any) => {
+    const value = event.target.value;
+    cornerRadius = value;
+  });
+
+  await updateSvgTexture(buttonText, fontWeight);
+
   const tick = async (frameTime: number) => {
     //
     // update
     //
-
-    log_write("glassyPos", glassyPos);
 
     //
     // render
@@ -414,7 +447,7 @@ const start = async () => {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    gl.enable(gl.DEPTH_TEST);
+    // gl.enable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -422,26 +455,21 @@ const start = async () => {
     // render a capsule button
     {
       const program = buttonProgram;
-      const sizeX = 100;
-      const sizeY = 100;
       const distance = 75;
-      const cornerRadius = 8;
 
       const directionalLight = {
-        dir: vec3_create(0, -0.25, -1),
+        dir: vec3_create(0, 0, -1),
         ambient: vec3_create(0.2, 0.2, 0.2),
-        // diffuse: vec3_create(0.5, 0.5, 0.5),
-        specular: vec3_create(1.0, 1.0, 1.0),
         diffuse: vec3_create(0.5, 0.5, 0.5),
-        // specular: vec3_create(0.7, 0.7, 0.7),
+        specular: vec3_create(1.0, 1.0, 1.0),
       };
 
       const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, distance, projMat, viewMat);
-      const modelScale = vec3_create(sizeX, sizeY, 1);
+      const modelScale = vec3_create(BUTTON_WIDTH, BUTTON_HEIGHT, 1);
 
       const lookAtMat = mat4_lookAt(
         modelPos,
-        canvasPosToScenePos(mouseX, mouseY, 10, projMat, viewMat),
+        canvasPosToScenePos(mouseX, mouseY, 5, projMat, viewMat),
         GLOBAL_UP,
       )!;
 
@@ -463,34 +491,63 @@ const start = async () => {
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_modelMat"), false, modelMat);
       gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_normalMat"), false, normalMat);
 
-      gl.uniform2f(gl.getUniformLocation(program, "u_size"), sizeX, sizeY);
+      gl.uniform2f(gl.getUniformLocation(program, "u_size"), BUTTON_WIDTH, BUTTON_HEIGHT);
       gl.uniform1f(gl.getUniformLocation(program, "u_cornerRadius"), cornerRadius);
-
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, redTexture);
-      gl.uniform1i(gl.getUniformLocation(program, "u_diffuseMap"), 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, metalTexture);
-      gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 1);
-      gl.activeTexture(gl.TEXTURE2);
-      gl.bindTexture(gl.TEXTURE_2D, normalTexture);
-      gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 2);
-
-      gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
 
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.dir"), directionalLight.dir);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.ambient"), directionalLight.ambient);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.diffuse"), directionalLight.diffuse);
       gl.uniform3fv(gl.getUniformLocation(program, "u_directionalLight.specular"), directionalLight.specular);
 
-      gl.bindVertexArray(rectVao);
-      gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
+      // draw background
+      {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, fullTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_clipMask"), 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, solidTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_diffuseMap"), 1);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, emptyTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 2);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, metalNormalTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 3);
+
+        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
+
+        gl.bindVertexArray(rectVao);
+        gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
+      }
+
+      // draw svg
+      {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, svgTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_clipMask"), 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, metalColorTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_diffuseMap"), 1);
+        gl.activeTexture(gl.TEXTURE2);
+        gl.bindTexture(gl.TEXTURE_2D, metalSpecularTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_specularMap"), 2);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, metalNormalTexture);
+        gl.uniform1i(gl.getUniformLocation(program, "u_normalMap"), 3);
+
+        gl.uniform1f(gl.getUniformLocation(program, "u_shininess"), 32);
+
+        gl.bindVertexArray(rectVao);
+        gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
+      }
     }
 
     // render plain svg texture
     {
-      // const modelPos = svgPos;
-      // const modelScale = vec3_create(SVG_WIDTH, SVG_HEIGHT, 1);
+      // const program = flatProgram;
+
+      // const modelPos = canvasPosToScenePos(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 200, projMat, viewMat);
+      // const modelScale = vec3_create(BUTTON_WIDTH, BUTTON_HEIGHT, 1);
 
       // let modelMat = mat4_identity();
       // modelMat = mat4_mul(modelMat, mat4_scale(modelScale));
@@ -509,7 +566,7 @@ const start = async () => {
       // gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
 
       // gl.bindVertexArray(rectVao);
-      // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / 8);
+      // gl.drawArrays(gl.TRIANGLES, 0, RECT_VERTS.length / VERT_SIZE);
     }
 
     // Store the scene so far in a texture, we will sample it when rendering the refractive object

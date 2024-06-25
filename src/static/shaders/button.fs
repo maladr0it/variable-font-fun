@@ -22,6 +22,7 @@ struct PointLight {
 // ui properties
 uniform vec2 u_size;
 uniform float u_cornerRadius;
+uniform sampler2D u_clipMask;
 
 // material properties
 uniform sampler2D u_diffuseMap;
@@ -122,6 +123,11 @@ void main() {
 
   for(int i = 0; i < u_numPointLights; i++) {
     lightingResult += calcPointLight(u_pointLights[i], normal, viewDir);
+  }
+
+  // apply clip mask
+  if(texture(u_clipMask, v_texCoord).a < 0.5f) {
+    discard;
   }
 
   outColor = vec4(lightingResult, 1.0f);

@@ -1,5 +1,5 @@
 import { Quat } from "./quat.ts";
-import { Vec3, vec3_cross, vec3_dot, vec3_lenSquared, vec3_mul, vec3_normalize, vec3_sub } from "./vec3.ts";
+import { Vec3, vec3_cross, vec3_lenSquared, vec3_mul, vec3_normalize, vec3_sub } from "./vec3.ts";
 
 export type Mat4 = Float32Array & {
   _tag: "Mat4";
